@@ -1,6 +1,6 @@
 main_dr_wav2mfcc_e_d_a;
 %written by mei
-%test2
+
 MODEL_NO=3; % ooe,ooke,ooko
 dim=39;
 thresholds = [.99 .999 .9999 .99999 .999999];
