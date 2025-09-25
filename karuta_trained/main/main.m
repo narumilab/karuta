@@ -39,6 +39,7 @@ for test=1:10
         list{k,2} = sprintf('mfcc_e_d_a/ooko%d.mfc',i);
         k = k+1;
     end
+    %test
     save('training_list_old.mat','list');
 
     EMIT_STATE_NO=MAX_EMIT_STATE_NO;
