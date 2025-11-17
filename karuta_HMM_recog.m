@@ -16,6 +16,7 @@ function [recog_time,recog_fuda,posterior]=karuta_HMM_recog(mfcc,model,threshold
             l = 0;
             pred = filt'*a_i_j;
             for i=2:N-1 
+                
                 l = l + pred(i)*exp(logDiagGaussian(mfcc(:,t),mean_vec_i(:,i),var_vec_i(:,i)));
                 filt(i) = pred(i)*exp(logDiagGaussian(mfcc(:,t),mean_vec_i(:,i),var_vec_i(:,i)));
             end

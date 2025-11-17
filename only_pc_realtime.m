@@ -8,6 +8,7 @@ Fs = 48000;
 n = 0.03; % 窓長 (frame_size_sec = 30 ms)
 m = 0.02; % フレームオーバーラップ（20 ms 重複）
 l = 0.01; % バッファ取得時間 (10 ms)
+o = 0;
 
 % ⭐ ファイル保存設定 ⭐
 output_dir = './kimariji_outputs';     % 保存先ディレクトリ
@@ -34,8 +35,9 @@ fullAudioBuffer = []; % 処理開始からの全音声データバッファ
 started = false;
 silenceThresh = 0.01; % 無音検出しきい値
 
+
 tic
-while toc < 10  % 最大30秒間に延長
+while toc < 5  % 最大30秒間に延長
     audioRecorded = deviceReader(); % 音声を取得 (10ms分)
     
     
@@ -57,9 +59,10 @@ while toc < 10  % 最大30秒間に延長
         [coeffs, delta, deltaDelta] = mfcc(frame, Fs);
         
         mfcc_matrix_current_block = [coeffs, delta, deltaDelta];
-        mfccBuffer = [mfccBuffer; mfcc_matrix_current_block];
+        %mfccBuffer = [mfccBuffer; mfcc_matrix_current_block];
         
-        mfcc_matrix = mfccBuffer;
+        %mfcc_matrix = mfccBuffer;
+        mfcc_matrix = mfcc_matrix_current_block;
         mfccs_test = {{mfcc_matrix}};
         fprintf("MFCC computed at %.3f sec. Total frames: %d\n", toc, size(mfccBuffer, 1));
         
@@ -77,9 +80,9 @@ while toc < 10  % 最大30秒間に延長
         disp(['決まり字確定フレームインデックス: ', num2str(recog_time_result)]);
         
         % ⭐⭐⭐ 決まり字確定時の音声ファイル保存ロジック ⭐⭐⭐
-        if recog_fuda_index > 0 
+        if recog_fuda_index > 0 && (o==0||o~=recog_time_result) 
             disp('*** 決まり字が確定しました！確定区間の音声をファイル保存します ***');
-            
+            o=recog_time_result;
             % kimarijiロジックに基づいて確定時点までの秒数を計算
             kimariji_second = frame_shift_sec * (recog_time_result - 1) + n; % n=frame_size_sec
             
