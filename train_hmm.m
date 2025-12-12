@@ -4,6 +4,7 @@ addpath('Lee_HMM'); % 必要なパスを追加
 
 disp('--- 1. 学習データの特徴量抽出 (MFCC) ---');
 % wav_to_mfcc を使用して学習データの特徴量を抽出
+%[mfccs_train,fudas_train] = wav_to_mfcc('./aihara_train');
 [mfccs_train,fudas_train] = wav_to_mfcc('./aihara_train');
 
 disp('--- 2. HMMモデルの学習 ---');

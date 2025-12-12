@@ -11,9 +11,11 @@ function [mfccs,fudas]=wav_to_mfcc(wav_dir)
         mfccs{i} = cell(1,length(files));
         for j=1:length(files)
             [y,Fs] = audioread(fullfile(subfolders{i},files(j).name));
-%            mfccs{i}{j} = mfcc(y,Fs);
+            mfccs{i}{j} = mfcc(y,Fs);
             [coeffs,delta,deltaDelta] = mfcc(y,Fs);
             mfccs{i}{j} = [coeffs delta deltaDelta];
+            %[coeffs] = mfcc(y,Fs);
+            %mfccs{i}{j} = coeffs;
         end
     end
 end

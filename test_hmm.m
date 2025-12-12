@@ -27,7 +27,7 @@ for i=1:nfuda % 札の種類 (フォルダ) のループ
     
     for j=1:nmfcc % 同じ札の繰り返しのループ (ファイル)
         % HMM認識を実行
-        [recog_time{i}{j}, recog_fuda{i}{j}, posterior{i}{j}] = karuta_HMM_recog(mfccs_test{i}{j}, model_file, 0.99, 0.1);
+        [recog_time{i}{j}, recog_fuda{i}{j}, posterior{i}{j}] = karuta_HMM_recog(mfccs_test{i}{j}, model_file, 0.9999, 0.1);
         
         % 認識率を計算
         % 認識結果(recog_fuda{i}{j})が正しい札のインデックス(i)と一致するかを判定

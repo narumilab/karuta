@@ -1,113 +1,236 @@
 % === 1. ユーザー設定 ===
-file1_name = 'オフライン処理_nageke1_mfcc.mat'; % 比較対象の1つ目の.matファイル名
-file2_name = 'リアルタイム処理_nageke1_mfcc.mat'; % 比較対象の2つ目の.matファイル名
+file1_name = 'mfcc比較\生データ\offline_delta_original_ooke1.mat'; % 比較対象の1つ目の.matファイル名
+file2_name = 'mfcc比較\生データ\offline_devide_delta_original_ooke1.mat'; % 比較対象の1つ目の.matファイル名 after
+file3_name = 'mfcc比較\生データ\realtime_delta_original_ooke1.mat';%before
+
 variable_name = 'mfcc_data'; % .matファイルに保存されている行列の変数名
+variable2_name = 'fullmfcc';
+variable3_name = 'fullmfcc';
+
 
 % === 2. データの読み込み ===
 try
     % .matファイルを読み込み、指定された変数名から行列を取得
     data1 = load(file1_name, variable_name);
-    data2 = load(file2_name, variable_name);
-    
+    data2 = load(file2_name, variable2_name);
+    data3 = load(file3_name, variable3_name);
+
+
     matrix1 = data1.(variable_name);
-    matrix2 = data2.(variable_name);
+    matrix2 = data2.(variable2_name);
+    matrix3 = data3.(variable3_name);
+ 
     
 catch ME
     fprintf('エラー: ファイルの読み込みまたは変数名の確認に失敗しました。\n');
     fprintf('メッセージ: %s\n', ME.message);
     return; % エラー発生時は処理を終了
 end
-
 % === 3. 形状チェック ===
-[R1, C1] = size(matrix1);
-[R2, C2] = size(matrix2);
-
-if C1 ~= 42 || C2 ~= 42
-    fprintf('警告: 行列の列数が42ではありません。 (data1: %d列, data2: %d列)\n', C1, C2);
+[R1_original, C1] = size(matrix1);
+[R2_original, C2] = size(matrix2);
+[R3_original, C3] = size(matrix3);
+if C1 ~= 42 || C2 ~= 42 || C3 ~= 42
+    fprintf('警告: 行列の列数が42ではありません。 (data1: %d列, data2: %d列)\n', C1, C2,C3);
 end
-
-if R1 ~= R2
-    fprintf('注意: 行列の行数が異なります。(data1: %d行, data2: %d行)\n', R1, R2);
+if R1_original ~= R2_original
+    fprintf('注意: 行列の行数が異なります。(data1: %d行, data2: %d行)\n', R1_original, R2_original);
     % 比較可能なように、行数の少ない方に合わせて行列を調整
-    min_rows = min(R1, R2);
+    min_rows = min(R1_original, R2_original);
     matrix1 = matrix1(1:min_rows, :);
     matrix2 = matrix2(1:min_rows, :);
 else
-    min_rows = R1;
+    min_rows = R1_original;
+end
+[R1_fix, C1] = size(matrix1);
+
+if R1_fix ~= R3_original
+    fprintf('注意: 行列の行数が異なります。(data1: %d行, data2: %d行)\n', R1_fix, R3_original);
+    % 比較可能なように、行数の少ない方に合わせて行列を調整
+    min_rows = min(R1_fix, R3_original);
+    matrix1 = matrix1(1:min_rows, :);
+    matrix2 = matrix2(1:min_rows, :);
+    matrix3 = matrix3(1:min_rows, :);
+else
+    min_rows = R1_fix;
 end
 
-% === 4. 比較行列の作成 ===
-
-% 二つの行列の差を計算
-difference = matrix1 - matrix2;
-
-% 差の絶対値が非常に小さい（ほぼゼロ）かどうかを判定 (浮動小数点数対策)
-tolerance = 1e-6; % 許容誤差（必要に応じて調整）
-% 差が許容誤差内なら 0 (一致)、そうでなければ 1 (不一致)
-mismatch_matrix = abs(difference) > tolerance;
-
-% === 5. 結果の可視化 (ヒートマップ) ===
-
-figure('Name', '行列比較結果の可視化', 'NumberTitle', 'off');
+% 調整後のサイズ
+[R_adj, C_adj] = size(matrix1); % R_adj = min_rows, C_adj = C1 = C2
 
 % === 4. 比較行列の作成 ===
 % 二つの行列の差を計算
 difference = matrix1 - matrix2;
+difference2 = matrix1 - matrix3;
 % 差の絶対値を取得（ずれの「大きさ」）
 absolute_difference = abs(difference);
-
+absolute_difference2 = abs(difference2);
 % 差の絶対値が非常に小さい（ほぼゼロ）かどうかを判定 (浮動小数点数対策)
 tolerance = 1e-6; % 許容誤差（必要に応じて調整）
 % 差が許容誤差内なら 0 (一致)、そうでなければ 1 (不一致)
 mismatch_matrix = absolute_difference > tolerance;
+mismatch_matrix2 = absolute_difference2 > tolerance;
 
+% --- ⭐ カラーバー/軸の統一設定の計算 ---
+% 1. MFCC値の統一範囲 (matrix1とmatrix2の全体)
+c_min_mfcc1 = min([matrix1(:); matrix2(:)]);
+c_max_mfcc1 = max([matrix1(:); matrix2(:)]);
+c_min_mfcc = min([c_min_mfcc1; matrix3(:)]);
+c_max_mfcc = max([c_max_mfcc1; matrix3(:)]);
+color_range_mfcc = [c_min_mfcc, c_max_mfcc];
+
+% 2. 差の絶対値の統一範囲 (絶対値の最大値)
+c_max_diff1 = max(absolute_difference(:));
+c_max_diff2 = max(absolute_difference2(:));
+c_max_diff = max(c_max_diff1,c_max_diff2);
+color_range_diff = [0, c_max_diff];
+
+% 3. 軸の統一設定
+X_TICKS = 1:C_adj;
+Y_TICKS = 1:5:min_rows;
+
+% -----------------------------------------------------------------------
 % === 5. 結果の可視化 (差の大きさのヒートマップ) ===
-
-figure('Name', '差の絶対値ヒートマップ (ずれの大きさ)', 'NumberTitle', 'off');
-
+figure(1);
+set(gcf, 'Name', 'after差の絶対値ヒートマップ (ずれの大きさ)', 'NumberTitle', 'off');
 % absolute_difference (差の絶対値) を画像として表示
-% 差が大きいほど色が濃くなる
 h_diff = imagesc(absolute_difference); 
-
-% カラーマップの設定 (差がない場所は白、差が大きい場所は濃い色)
-% 'hot' や 'jet' など、変化が分かりやすいカラーマップを使うのが一般的です。
 colormap('jet'); 
-
 % カラーバーを追加し、値の意味を説明 (差の絶対値を示す)
 c = colorbar;
 c.Label.String = '差の絶対値 (|matrix1 - matrix2|)';
-
 % タイトルと軸ラベルの設定
-title('オフライン vs リアルタイム MFCC 差の絶対値');
+title('オフライン一括 vs オフライン分割 修正版 MFCC 差の絶対値');
 xlabel('特徴量次元 (列)');
 ylabel('時間フレーム (行)');
-
 % 軸を整数値で表示
-set(gca, 'XTick', 1:C1);
-set(gca, 'YTick', 1:5:min_rows); % 行数が多すぎる場合は5行おきに表示
+set(gca, 'XTick', X_TICKS);
+set(gca, 'YTick', Y_TICKS);
+% 差のヒートマップの色範囲を設定 (0 から最大値まで)
+clim(color_range_diff); 
 
 % -----------------------------------------------------------------------
+% === 5. 結果の可視化 (差の大きさのヒートマップ) ===
+figure(2);
+set(gcf, 'Name', 'before差の絶対値ヒートマップ (ずれの大きさ)', 'NumberTitle', 'off');
+% absolute_difference (差の絶対値) を画像として表示
+h_diff2 = imagesc(absolute_difference2); 
+colormap('jet'); 
+% カラーバーを追加し、値の意味を説明 (差の絶対値を示す)
+c = colorbar;
+c.Label.String = '差の絶対値 (|matrix1 - matrix3|)';
+% タイトルと軸ラベルの設定
+title('オフライン一括 vs オフライン分割 MFCC 差の絶対値');
+xlabel('特徴量次元 (列)');
+ylabel('時間フレーム (行)');
+% 軸を整数値で表示
+set(gca, 'XTick', X_TICKS);
+set(gca, 'YTick', Y_TICKS);
+% 差のヒートマップの色範囲を設定 (0 から最大値まで)
+clim(color_range_diff); 
+% -----------------------------------------------------------------------
+% === 5A. 結果の可視化 (オフラインMFCC: matrix1) ===
+figure(3);
+set(gcf, 'Name', 'オフライン MFCC (matrix1) の可視化', 'NumberTitle', 'off');
+% 行列の値そのものを画像として表示
+h_m1 = imagesc(matrix1); 
+colormap('parula'); 
+c1 = colorbar;
+c1.Label.String = 'MFCC 値';
+title('オフライン処理 MFCC (File 1)');
+xlabel('特徴量次元 (列)');
+ylabel('時間フレーム (行)');
+% 軸の表示設定
+set(gca, 'XTick', X_TICKS);
+set(gca, 'YTick', Y_TICKS); 
 
+% ⭐ [重要] matrix1 の MFCC値の色の範囲を統一
+clim(color_range_mfcc);
+
+
+
+% -----------------------------------------------------------------------
+% === 5B. 結果の可視化 (リアルタイムMFCC: matrix2) ===
+figure(4);
+set(gcf, 'Name', 'オフライン分割修正 MFCC (matrix2) の可視化', 'NumberTitle', 'off');
+% 行列の値そのものを画像として表示
+h_m2 = imagesc(matrix2); 
+colormap('parula'); 
+c2 = colorbar;
+c2.Label.String = 'MFCC 値';
+title('オフライン処理　分割 MFCC (File 2)');
+xlabel('特徴量次元 (列)');
+ylabel('時間フレーム (行)');
+% 軸の表示設定
+set(gca, 'XTick', X_TICKS);
+set(gca, 'YTick', Y_TICKS); 
+
+% ⭐ [重要] matrix2 の MFCC値の色の範囲を統一
+clim(color_range_mfcc);
+
+% === 5C. 結果の可視化 ( matrix3) ===
+figure(5);
+set(gcf, 'Name', 'オフライン分割 MFCC (matrix3) の可視化', 'NumberTitle', 'off');
+% 行列の値そのものを画像として表示
+h_m3 = imagesc(matrix3); 
+colormap('parula'); 
+c2 = colorbar;
+c2.Label.String = 'MFCC 値';
+title('オフライン処理　分割 MFCC (File 3)');
+xlabel('特徴量次元 (列)');
+ylabel('時間フレーム (行)');
+% 軸の表示設定
+set(gca, 'XTick', X_TICKS);
+set(gca, 'YTick', Y_TICKS); 
+
+% ⭐ [重要] matrix2 の MFCC値の色の範囲を統一
+clim(color_range_mfcc);
+
+% -----------------------------------------------------------------------
 % === 6. 結果の可視化 (二値比較ヒートマップ) ===
-% 以前の二値比較も残しておくと、どこが本当にゼロに近いか確認できます
-figure('Name', '二値比較結果 (一致/不一致)', 'NumberTitle', 'off');
+figure(6);
+set(gcf, 'Name', 'after二値比較結果 (一致/不一致)', 'NumberTitle', 'off');
 imagesc(mismatch_matrix); 
 colormap([1 1 1; 1 0 0]); % [白; 赤]
 c_bin = colorbar;
 c_bin.Ticks = [0.25, 0.75]; 
 c_bin.TickLabels = {'一致 (0)', '不一致 (1)'};
-title(sprintf('二値比較 (許容誤差: %g)', tolerance));
+title(sprintf('after二値比較 (許容誤差: %g)', tolerance));
 xlabel('特徴量次元 (列)');
 ylabel('時間フレーム (行)');
-set(gca, 'XTick', 1:C1);
-set(gca, 'YTick', 1:5:min_rows); 
-
+set(gca, 'XTick', X_TICKS);
+set(gca, 'YTick', Y_TICKS); 
+% 二値比較は caxis が自動的に [0, 1] になるため、追加設定は不要です。
 
 % === 7. 統計結果 ===
 % 最後に、行ごとの一致/不一致の割合を計算 (ロジックは変更なし)
 rows_mismatched = sum(any(mismatch_matrix, 2)); % 1つでも不一致な要素を含む行数
 total_rows = min_rows;
-fprintf('\n--- 統計結果 ---\n');
+fprintf('\n--- after統計結果 ---\n');
+fprintf('総行数（フレーム数）: %d\n', total_rows);
+fprintf('完全に一致した行数: %d\n', total_rows - rows_mismatched);
+fprintf('1つでも不一致な要素を含む行数 (許容誤差 %g): %d\n', tolerance, rows_mismatched);
+
+% === 7. 結果の可視化 (二値比較ヒートマップ) ===
+figure(7);
+set(gcf, 'Name', 'before二値比較結果 (一致/不一致)', 'NumberTitle', 'off');
+imagesc(mismatch_matrix2); 
+colormap([1 1 1; 1 0 0]); % [白; 赤]
+c_bin = colorbar;
+c_bin.Ticks = [0.25, 0.75]; 
+c_bin.TickLabels = {'一致 (0)', '不一致 (1)'};
+title(sprintf('before二値比較 (許容誤差: %g)', tolerance));
+xlabel('特徴量次元 (列)');
+ylabel('時間フレーム (行)');
+set(gca, 'XTick', X_TICKS);
+set(gca, 'YTick', Y_TICKS); 
+% 二値比較は caxis が自動的に [0, 1] になるため、追加設定は不要です。
+
+% === 7. 統計結果 ===
+% 最後に、行ごとの一致/不一致の割合を計算 (ロジックは変更なし)
+rows_mismatched = sum(any(mismatch_matrix2, 2)); % 1つでも不一致な要素を含む行数
+total_rows = min_rows;
+fprintf('\n--- before統計結果 ---\n');
 fprintf('総行数（フレーム数）: %d\n', total_rows);
 fprintf('完全に一致した行数: %d\n', total_rows - rows_mismatched);
 fprintf('1つでも不一致な要素を含む行数 (許容誤差 %g): %d\n', tolerance, rows_mismatched);

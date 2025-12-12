@@ -3,7 +3,11 @@ clear;
 addpath('Lee_HMM'); 
 % === ユーザー設定部分 ===
 model_file = 'models_state30/iter10.mat'; % HMM学習済みモデル 
-Fs = 48000;
+
+input_wav_path = './aihara_test/wasura/wasura1.wav'; 
+%[y, Fs] = audioread(input_wav_path);
+%Fs = 48000;
+Fs = 44100;
 n = 0.03; % 窓長 (30 ms)
 m = 0.02; % オーバーラップ (20 ms)
 l = 0.01; % バッファ取得時間 (10 ms)
@@ -22,20 +26,30 @@ posterior = zeros(num_fuda,1);
 filt = zeros(N, num_fuda); 
 filt(1, :) = 1.0;
 accumulated_frame_count = 0;          % 累積フレーム数
+accumulated_frame = 0; 
+% ⭐ 追加: MFCCフレームの累積インデックス (30msフレーム単位)
+mfcc_frame_index = 0; 
+
 % ⭐ 札のインデックスを初期化 ⭐
 recog_time = inf;
 recog_fuda = 0;
 fuda = 0;
 % ⭐ 追加 3: 認識された札の確定インデックスの記録用リスト ⭐
 recog_sequence_log = []; 
+
+shift_fix = 0;
+shift_error = 0;
+
 % === HMM状態の初期化 ===
 
 
 % ⭐ 変更 1: recog_locked フラグは不要になるか、処理を制御するために残す ⭐
-recog_locked = false;                 % ファイル保存の重複防止用として維持
+recog_locked = false; % ファイル保存の重複防止用として維持
 
 % === 変数の計算 ===
-frameLen = round(n * Fs);       % 30 ms 
+x=1;
+frameLen = round(n * x * Fs);       % 30 ms 
+shift_check = round(m * Fs);
 frame_shift_sec = n - m;        % 10 ms 
 shift    = round(frame_shift_sec * Fs); % 10 ms 
 bufLen   = round(l * Fs);       % 10 ms 
@@ -47,8 +61,11 @@ disp('Listening... (waiting for non-silent input)');
 % --- リアルタイム処理バッファの初期化 ---
 ringBuffer = [];
 fullAudioBuffer = []; % ファイル保存のために全音声データを累積
+fullmfcc = [];
 started = false;
-silenceThresh = 0.01; 
+%silenceThresh = 0.0001; 
+silenceThresh = 0.0001470000014;
+
 
 % ⭐ 追加 1: オーバーラン情報を記録するリストを初期化 ⭐
 % [フレーム番号, 時刻 (s), 欠落サンプル数] を格納
@@ -76,60 +93,75 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
     
     ringBuffer = [ringBuffer; audioRecorded]; 
     fullAudioBuffer = [fullAudioBuffer; audioRecorded]; % ファイル保存のため累積
-    
-    % --- MFCC処理 ---
-    if length(ringBuffer) >= frameLen
+    g = length(ringBuffer);
+    accumulated_frame_count = accumulated_frame_count + 1;
+     % --- MFCC処理 ---
+   
+    if length(ringBuffer) >= frameLen;
+        
         frame = ringBuffer(1:frameLen);
+        a=length(ringBuffer);
+        c=length(frame);
         [coeffs, delta, deltaDelta] = mfcc(frame, Fs);
-        
         mfcc_matrix_current_block = [coeffs, delta, deltaDelta];
-        
+       
+        fullmfcc = [fullmfcc;mfcc_matrix_current_block];
         % ⭐ 修正 1: HMMには最新の1フレームのみを渡す (次元数 x 1 に転置)
         mfcc_data = mfcc_matrix_current_block'; 
         
         % 累積フレーム数をカウント
-        accumulated_frame_count = accumulated_frame_count + 1;
+        
         
         fprintf("MFCC computed at %.3f sec. Total frames: %d\n", toc, accumulated_frame_count);
-        
-        ringBuffer(1:shift) = []; % 窓長 (30ms) からシフト量 (10ms) 分を削除
-        
-        % --- HMM認識処理 ---
-        % ⭐ 変更 2: recog_locked を使わず、常に認識を試みる ⭐
-        disp('--- 2. HMM認識の実行 ---');
-        
-        % 状態変数を渡し、結果を受け取る 
-%        [recog_time_relative, recog_fuda_index, posterior_result, current_ll_matrix, current_filt] = ...
-%            karuta_HMM_recog_realtime2(mfcc_data, model_file, threshold, w, before_ll, before_filt);
        
-        
-        for k=1:num_fuda
-           
-            l = 0;
-            pred = filt(:,k)'*a_i_j_m(:,:,k);
-            for i=2:N-1 
-                emission_prob = exp(logDiagGaussian(mfcc_data,mean_vec_i_m(:,i,k),var_vec_i_m(:,i,k)));
-                l = l + pred(i) * emission_prob;
-                filt(i,k) = pred(i) * emission_prob;
+        ringBuffer(1:length(frame)-shift_check) = []; % シフト量 (20ms) 分をのこす
+        b = length(ringBuffer);
+        if length(ringBuffer) > g-c+(Fs*0.02)
+            shift_fix = shift_fix + 1;
+            shift_change = frameLen -shift_check;
+            ringBuffer = ringBuffer(shift_change + 1 : end);
+            
+        end
+        if length(ringBuffer) < g-c+(Fs*0.02)
+            disp('欠落しました');
+            shift_error =  shift_error + 1;
+        end
+      
+        % --- HMM認識処理 ---
+        disp('--- 2. HMM認識の実行 ---');
+
+        p=size(mfcc_data,2);
+        for s=1:size(mfcc_data,2);
+            
+            for k=1:num_fuda;
+               
+                l = 0;
+                pred = filt(:,k)'*a_i_j_m(:,:,k);
+                for i=2:N-1 
+                    emission_prob = exp(logDiagGaussian(mfcc_data(1:14,s),mean_vec_i_m(1:14,i,k),var_vec_i_m(1:14,i,k)));
+                    l = l + pred(i) * emission_prob;
+                    filt(i,k) = pred(i) * emission_prob;
+                end
+                ll(k) = ll(k)+log(l);
+                filt(:,k) = filt(:,k)/sum(filt(:,k));
             end
-            ll(k) = ll(k)+log(l);
-            filt(:,k) = filt(:,k)/sum(filt(:,k));
+            posterior = exp(w*(ll-max(ll)));
+            posterior = posterior/sum(posterior);
+            
+            if max(posterior) > threshold
+                %recog_time = t;
+                [~,recog_fuda] = max(posterior);
+                break
+            end
+              
+               
+            % ⭐⭐⭐ 最新の事後確率を表示 ⭐⭐⭐
+            disp('--- 最新の札別 潜在確率 (Posterior) ---');
+            for k = 1:num_fuda
+    %            fprintf('  札 %d: %.6f\n', k, posterior_result(k, end) * 100); 
+                fprintf('  札 %d: %.6f\n', k, posterior(k) * 100); 
+            end
         end
-        posterior = exp(w*(ll-max(ll)));
-        posterior = posterior/sum(posterior);
-        
-        if max(posterior) > threshold
-            %recog_time = t;
-            [~,recog_fuda] = max(posterior);
-        end
-           
-        % ⭐⭐⭐ 最新の事後確率を表示 ⭐⭐⭐
-        disp('--- 最新の札別 潜在確率 (Posterior) ---');
-        for k = 1:num_fuda
-%            fprintf('  札 %d: %.6f\n', k, posterior_result(k, end) * 100); 
-            fprintf('  札 %d: %.6f\n', k, posterior(k) * 100); 
-        end
-        
         % ⭐ 変更 3: 状態変数を更新し、次のステップへ引き継ぐ (リセットはしない) ⭐
         %before_ll = current_ll_matrix(:, end) ;
         %before_filt = current_filt;            
@@ -137,7 +169,7 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
         % --- 結果表示 ---
         disp('--- 認識結果 ---');
         disp(['認識された札のインデックス: ', num2str(recog_fuda)]);
-        disp(['決まり字確定フレームインデックス (累積): ', num2str(accumulated_frame_count)]);
+        disp(['決まり字確定フレームインデックス (累積): ', num2str(accumulated_frame)]);
         
         % ⭐⭐⭐ 決まり字確定時の音声ファイル保存ロジック ⭐⭐⭐
         % 変更 4: recog_locked フラグでファイル保存を一度だけ行う制御に変更
@@ -149,13 +181,13 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
             disp('*** 決まり字が確定しました！確定区間の音声をファイル保存します (状態は継続) ***');
             
             % ⭐ 修正 4: 確定フレーム数は累積カウントを使用 ⭐
-            total_recog_frame = accumulated_frame_count; 
+            total_recog_frame = accumulated_frame;
             
             % 確定時点までの秒数を計算 (frame_shift_sec は 10ms)
             kimariji_second = frame_shift_sec * (total_recog_frame - 1) + n; 
             
             % 全体の音声バッファから、その秒数に対応するサンプル数を切り出す
-            kimariji_samples = ceil(kimariji_second * Fs); 
+            kimariji_samples = ceil(kimariji_second * Fs);
             
             if kimariji_samples > length(fullAudioBuffer)
                 kimariji_samples = length(fullAudioBuffer);
@@ -212,6 +244,10 @@ else
     disp(output_str{1});
 end
 
+fprintf('バッファサイズを　%d 回調節しました。\n', shift_fix);
+
+fprintf('バッファサイズが　%d 回足りませんでした。\n', shift_error);
+
 % ========================================
 % ⭐ 追加 2: オーバーラン情報の最終出力 ⭐
 % ========================================
@@ -233,3 +269,23 @@ else
     end
     disp('------------------------------------------------------------------');
 end
+
+
+%try
+    % 音声データのサンプリング周波数とデータ長を取得
+    %TotalSamples = length(fullAudioBuffer);
+    %TimeDuration = TotalSamples / Fs;
+    
+    % 時間ベクトルを作成
+    %time_vector = (0:TotalSamples-1) / Fs;
+    
+    %figure;
+    %plot(time_vector, fullAudioBuffer);
+    %title('全入力音声波形');
+    %xlabel('時間 (秒)');
+    %ylabel('振幅');
+    %grid on;
+    %disp(['プロットが完了しました。音声総時間: ', num2str(TimeDuration, '%.3f'), ' 秒']);
+%catch ME_plot
+    %disp(['波形プロット中にエラーが発生しました: ', ME_plot.message]);
+%end

@@ -34,7 +34,7 @@ out_buf = zeros(bufLen,1);
 ringBuffer = zeros(0,1);
 
 started = false;       % 無音→音声を検知したかどうか
-silenceThresh = 0.01;  % 無音判定のしきい値（RMS）
+silenceThresh = 0.1;  % 無音判定のしきい値（RMS）
 silenceCount = 0;      % 連続無音検出カウンタ
 
 disp("Listening... (waiting for non-silent input)");

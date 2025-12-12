@@ -6,7 +6,8 @@ addpath('Lee_HMM'); % 必要なパスを追加
 % HMM認識に使用する学習済みモデルのファイルパス
 % === ユーザー設定部分 ===
 model_file = 'models_state30/iter10.mat'; % HMM学習済みモデル 
-Fs = 48000;
+%Fs = 48000;
+Fs = 44100;
 n = 0.03; % 窓長 (30 ms)
 m = 0.02; % オーバーラップ (20 ms)
 l = 0.01; % バッファ取得時間 (10 ms)
@@ -40,7 +41,7 @@ ringBuffer = [];
 fullAudioBuffer = []; 
 mfcc_matrix2 = [];% ファイル保存のために全音声データを累積
 started = false;
-silenceThresh = 0.01; 
+silenceThresh = 0.0001470000014; 
 tic
 
 while toc < 5 % 時間を30秒間に延長 (認識が継続するため)

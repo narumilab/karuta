@@ -26,6 +26,9 @@ accumulated_frame_count = 0;          % 累積フレーム数
 recog_time = inf;
 recog_fuda = 0;
 fuda = 0;
+
+% ⭐ 追加 3: 認識された札の確定インデックスの記録用リスト ⭐
+recog_sequence_log = []; 
 % ⭐ 変更 1: recog_locked フラグは不要になるか、処理を制御するために残す ⭐
 recog_locked = false;                 % ファイル保存の重複防止用として維持
 % === 変数の計算 ===
@@ -136,9 +139,11 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
         
         % ⭐⭐⭐ 決まり字確定時の音声ファイル保存ロジック ⭐⭐⭐
         % 変更 4: recog_locked フラグでファイル保存を一度だけ行う制御に変更
-        if recog_fuda == fuda && ~recog_locked
-            recog_locked = true; % 認識を確定 (重複実行防止)
+        if recog_fuda ~= fuda  
             fuda = recog_fuda;
+
+            % ⭐ 追加 4: 確定した札のインデックスを記録 ⭐
+            recog_sequence_log = [recog_sequence_log, recog_fuda];
             disp('*** 決まり字が確定しました！確定区間の音声をファイル保存します (状態は継続) ***');
             
             % ⭐ 修正 4: 確定フレーム数は累積カウントを使用 ⭐
@@ -180,6 +185,29 @@ end
 release(deviceReader);
 disp('処理終了');
 
+
+
+% ========================================
+% ⭐ 追加 5: 決まり字シーケンスの最終出力 ⭐
+% ========================================
+disp('---');
+disp('📜 **決まり字 最終認識シーケンス** 📜');
+if isempty(recog_sequence_log)
+    disp('認識された札はありませんでした。');
+else
+    % 記録されたインデックスの推移 (重複を含む)
+    fprintf('Raw Sequence (重複あり): %s\n', num2str(recog_sequence_log));
+
+    % 重複を排除し、推移の順序を保持 (MATLAB 2017a以降で利用可能)
+    unique_sequence = unique(recog_sequence_log, 'stable'); 
+    
+    % シーケンスを '→' でつなぐ文字列を作成
+    output_str = join(string(unique_sequence), ' → ');
+    
+    disp('**ユニークな決まり字の推移 (順番維持):**');
+    disp(output_str{1});
+end
+
 % ========================================
 % ⭐ 追加 2: オーバーラン情報の最終出力 ⭐
 % ========================================
@@ -200,3 +228,6 @@ else
     end
     disp('------------------------------------------------------------------');
 end
+
+
+
