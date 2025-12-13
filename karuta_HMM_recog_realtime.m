@@ -1,6 +1,8 @@
 function [recog_time, recog_fuda, posterior, ll, current_filt] = karuta_HMM_recog_realtime(mfcc, model, threshold, w, before_ll, before_filt)
 
-    mfcc = mfcc';
+    % The input mfcc is already in the format (dimensions x frames).
+    % Do not transpose it.
+    % mfcc = mfcc';
     load(model, 'mean_vec_i_m', 'var_vec_i_m', 'a_i_j_m');
     num_fuda = size(mean_vec_i_m,3);
     N = size(mean_vec_i_m,2);

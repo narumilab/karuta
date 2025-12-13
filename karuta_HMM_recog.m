@@ -17,8 +17,13 @@ function [recog_time,recog_fuda,posterior]=karuta_HMM_recog(mfcc,model,threshold
             pred = filt'*a_i_j;
             for i=2:N-1 
                 
-                l = l + pred(i)*exp(logDiagGaussian(mfcc(:,t),mean_vec_i(:,i),var_vec_i(:,i)));
-                filt(i) = pred(i)*exp(logDiagGaussian(mfcc(:,t),mean_vec_i(:,i),var_vec_i(:,i)));
+                e = exp(logDiagGaussian(mfcc(:,t),mean_vec_i(:,i),var_vec_i(:,i)));
+                l = l + pred(i)*e;
+                filt(i) = pred(i)*e;
+            end
+            % 数値下限を設けて -Inf の伝播を防ぐ
+            if ~isfinite(l) || l<=0
+                l = realmin;
             end
             if t==1
                 ll(k,t) = log(l);
@@ -29,8 +34,18 @@ function [recog_time,recog_fuda,posterior]=karuta_HMM_recog(mfcc,model,threshold
         end
     end
     for t=1:T
-        posterior(:,t) = exp(w*(ll(:,t)-max(ll(:,t))));
-        posterior(:,t) = posterior(:,t)/sum(posterior(:,t));
+        delta_ll = ll(:,t)-max(ll(:,t));
+        if all(~isfinite(delta_ll)) % 全クラス -Inf の場合は一様に落とす
+            posterior(:,t) = ones(num_fuda,1)/num_fuda;
+            continue;
+        end
+        posterior(:,t) = exp(w*delta_ll);
+        s = sum(posterior(:,t));
+        if s==0 || ~isfinite(s)
+            posterior(:,t) = ones(num_fuda,1)/num_fuda;
+        else
+            posterior(:,t) = posterior(:,t)/s;
+        end
     end
     recog_time = inf;
     recog_fuda = 0;

@@ -1,0 +1,26 @@
+# macOS
+.DS_Store
+
+# MATLAB/Octave
+*.asv
+*~
+*.bak
+*.log
+*.tmp
+
+# Output files
+*.wav
+# *.mat
+
+# Output directories
+/kimariji_outputs/
+/kimariji_outputs_offline/
+/plot/
+/mfcc比較/
+/aihara_realtime_kimariji/
+/aihara_realtime_kimariji_live/
+/aihara_realtime_kimariji_single/
+
+# Trained models (if they should not be in git)
+# /models_state30/
+# /karuta_trained/
