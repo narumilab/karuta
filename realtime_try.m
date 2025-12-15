@@ -1,137 +1,218 @@
 clear;
-% HMM関数 karuta_HMM_recog_realtime がパス上にあることを前提とします。
 addpath('Lee_HMM'); 
 
-% === ユーザー設定部分 ===
-model_file = 'models_state30/iter10.mat'; % HMM学習済みモデル
-input_wav_path = './aihara_test/nageke/nageke2.wav'; % オフライン入力
-% 学習時の特徴抽出に合わせてサンプルレートを固定（学習データは44.1kHz）
-Fs_target = 44100;
-n = 0.03; % 窓長 (30 ms)
-m = 0.02; % オーバーラップ (20 ms)
-l = 0.01; % バッファ取得時間 (10 ms)
+% === ユーザー設定 ===
+model_file = 'models_state30/iter10.mat'; 
+input_wav_path = './aihara_test/ooko/ooko1.wav'; 
+
+% デフォルトは offline でテストして「理論値」を見てください
+if ~exist('run_mode', 'var'), run_mode = 'offline'; end
+is_offline = strcmpi(run_mode, 'offline');
+
+Fs_target = 44100; 
+l = 0.01; % 10ms
 threshold = 0.9999;
 w = 0.1;
 
-% ⭐ ファイル保存設定 ⭐
+% ★重要変更: バッファサイズを 0.3秒 (300ms) に拡大★
+% これにより前後の音脈を広く見れるようになり、誤認識が減ります。
+context_duration = 0.3; 
+
+% 連続一致回数 (3回 = 30ms 連続で確率99.9%超えなら確定)
+consecutive_limit = 3; 
+
+% マイク設定
+silenceThresh = 0.05; 
+input_gain = 3.0; 
+
 output_dir = './kimariji_outputs';     
 output_base_name = 'recog_kimariji'; 
 
-% === HMM状態の初期化 ===
+% === HMM初期化 ===
 load(model_file, 'mean_vec_i_m');
-num_fuda = size(mean_vec_i_m, 3); % 札数 (K)
-N = size(mean_vec_i_m, 2);      % 状態数 (N)
+model_dim = size(mean_vec_i_m, 1); 
+num_fuda = size(mean_vec_i_m, 3); 
+N = size(mean_vec_i_m, 2);      
 
-% ⭐ HMMの状態管理変数を初期化 ⭐
-before_ll = zeros(num_fuda, 1);       % 累積尤度 (K x 1)
-before_filt = zeros(N, num_fuda);     % 前方確率 (N x K)
-accumulated_frame_count = 0;          % 累積フレーム数
-recog_locked = false;                 % 認識確定フラグ (重複実行防止用)
+before_ll = zeros(num_fuda, 1);       
+before_filt = zeros(N, num_fuda);     
+recog_locked = false;                 
+lock_counter = 0; 
 
-% === 変数の計算 ===
-frameLen = round(n * Fs_target);       % 30 ms 
-frame_shift_sec = n - m;        % 10 ms 
-shift    = round(frame_shift_sec * Fs_target); % 10 ms 
+% =========================================================
+% [モードA] オフライン分析 (理論上の最速タイムを計測)
+% =========================================================
+if is_offline
+    disp(['--- オフライン分析モード: ' input_wav_path ' ---']);
+    disp(['Context Duration: ' num2str(context_duration) ' sec']);
+    
+    [y, Fs_in] = audioread(input_wav_path);
+    if Fs_in ~= Fs_target, y = resample(y, Fs_target, Fs_in); end
+    
+    sim_buffer = [];
+    % ★修正: ここで変数を参照するように変更
+    context_samples = round(context_duration * Fs_target); 
+    step_samples = round(0.01 * Fs_target);   
+    
+    disp('--------------------------------------------------');
+    current_pos = 1;
+    frame_count = 0;
+    
+    while current_pos + step_samples <= length(y)
+        new_chunk = y(current_pos : current_pos + step_samples - 1);
+        sim_buffer = [sim_buffer; new_chunk];
+        
+        if length(sim_buffer) > context_samples
+            sim_buffer(1 : length(sim_buffer)-context_samples) = [];
+        end
+        
+        if length(sim_buffer) >= context_samples
+            frame_count = frame_count + 1;
+            
+            [coeffs, delta, deltaDelta] = mfcc(sim_buffer, Fs_target);
+            mfcc_block = [coeffs, delta, deltaDelta];
+            if size(mfcc_block, 2) > model_dim, mfcc_block = mfcc_block(:, 1:model_dim);
+            elseif size(mfcc_block, 2) < model_dim, mfcc_block(:, end+1:model_dim) = 0; end
+            stable_idx = round(size(mfcc_block, 1) / 2); 
+            mfcc_data = mfcc_block(stable_idx, :)'; 
 
-% === リアルタイム入力 (マイク) ===
+            [~, ~, posterior_result, current_ll_matrix, current_filt] = ...
+                karuta_HMM_recog_realtime(mfcc_data, model_file, threshold, w, before_ll, before_filt);
+            
+            before_ll = current_ll_matrix(:, end);
+            before_filt = current_filt;
+            
+            [max_p, max_idx] = max(posterior_result(:, end));
+            
+            time_sec = frame_count * 0.01;
+            if max_p > 0.01
+                fprintf('経過: %.2f秒 | 有力: 札%d (%.2f%%)\n', time_sec, max_idx, max_p*100);
+            end
+            
+            if max_p > 0.999
+                lock_counter = lock_counter + 1;
+            else
+                lock_counter = 0;
+            end
+            
+            if lock_counter >= consecutive_limit
+                disp('--------------------------------------------------');
+                disp(['★ 理論上の認識確定タイム: ' num2str(time_sec) ' 秒']);
+                disp(['★ 認識された札: ' num2str(max_idx)]);
+                disp('--------------------------------------------------');
+                break; 
+            end
+        end
+        current_pos = current_pos + step_samples;
+    end
+    return;
+end
+
+% =========================================================
+% [モードB] オンラインモード (最速アタック仕様)
+% =========================================================
+disp('--- オンラインモード: マイク入力を開始 ---');
+disp(['Context Duration: ' num2str(context_duration) ' sec']);
+
+% ★修正: ここで変数を参照するように変更
+context_samples = round(context_duration * Fs_target); 
+
 deviceReader = audioDeviceReader(...
+    'Device', 'MacBook Proのマイク', ... 
     'SampleRate', Fs_target, ...
-    'SamplesPerFrame', round(l * Fs_target)); % 10ms ごとに取得
+    'SamplesPerFrame', round(l * Fs_target)); 
 
-% HMM認識に渡すための音声バッファ
-audio_buffer_for_hmm = [];
-% 認識確定後に保存するための全長バッファ
+ringBuffer = [];      
 fullAudioBuffer = []; 
+started = false;      
+silence_counter = 0;
+lock_counter = 0; 
 
-% HMM認識をトリガーするバッファ長 (秒)
-buffer_trigger_duration = 0.5; % 500ms
-buffer_trigger_samples = round(buffer_trigger_duration * Fs_target);
-
-disp('リアルタイム認識を開始します。マイクに向かって話してください...');
 tic;
-
 while ~recog_locked
-    % オーディオフレームを取得
     acquiredAudio = deviceReader();
+    acquiredAudio = acquiredAudio * input_gain; 
     
-    % バッファに追加
-    audio_buffer_for_hmm = [audio_buffer_for_hmm; acquiredAudio];
-    fullAudioBuffer = [fullAudioBuffer; acquiredAudio];
+    ringBuffer = [ringBuffer; acquiredAudio];
+    if length(ringBuffer) > context_samples
+        ringBuffer(1:length(ringBuffer)-context_samples) = [];
+    end
     
-    % バッファがトリガーサイズに達したらHMM認識を実行
-    if length(audio_buffer_for_hmm) >= buffer_trigger_samples
-        disp('--- 特徴量を計算してHMM認識を実行 ---');
+    rmsVal = sqrt(mean(acquiredAudio.^2));
+    
+    if length(ringBuffer) >= context_samples
+        if rmsVal > silenceThresh
+            silence_counter = 0; is_active = true;
+        else
+            if started
+                silence_counter = silence_counter + 1;
+                if silence_counter <= 30, is_active = true; else, is_active = false; end
+            else, is_active = false; end
+        end
         
-        % --- 特徴抽出 ---
-        [coeffs, delta, deltaDelta] = mfcc(audio_buffer_for_hmm, Fs_target);
-        mfcc_matrix = [coeffs, delta, deltaDelta];
-        mfcc_data = mfcc_matrix';
-        fprintf('  - MFCC matrix size: %d x %d\n', size(mfcc_matrix, 1), size(mfcc_matrix, 2));
-
-        % --- HMM認識処理 ---
-        % 前回の状態を引き継いで実行
-        [~, recog_fuda_index, posterior_result, current_ll_matrix, current_filt] = ...
-            karuta_HMM_recog_realtime(mfcc_data, model_file, threshold, w, before_ll, before_filt);
-        
-        % 状態を次のループのために更新
-        before_ll = current_ll_matrix(:, end);
-        before_filt = current_filt;
-        
-        % 認識結果の表示
-        [max_posterior, latest_recog_idx] = max(posterior_result(:, end));
-        fprintf('  - Latest recognition index: %d (Posterior: %.4f)\n', latest_recog_idx, max_posterior);
-        
-        if recog_fuda_index > 0
-            recog_locked = true; % 認識を確定
-            disp(['認識された札のインデックス: ', num2str(recog_fuda_index)]);
+        if is_active
+            if ~started
+                started = true;
+                disp('>>> 音声を検知! 認識開始 >>>');
+                fullAudioBuffer = []; fullAudioBuffer = [fullAudioBuffer; ringBuffer]; 
+                before_ll = zeros(num_fuda, 1); before_filt = zeros(N, num_fuda);
+                lock_counter = 0;
+            else
+                fullAudioBuffer = [fullAudioBuffer; acquiredAudio];
+            end
+            
+            [coeffs, delta, deltaDelta] = mfcc(ringBuffer, Fs_target);
+            mfcc_block = [coeffs, delta, deltaDelta];
+            if size(mfcc_block, 2) > model_dim, mfcc_block = mfcc_block(:, 1:model_dim);
+            elseif size(mfcc_block, 2) < model_dim, mfcc_block(:, end+1:model_dim) = 0; end
+            stable_idx = round(size(mfcc_block, 1) / 2); mfcc_data = mfcc_block(stable_idx, :)'; 
+            
+            [~, ~, posterior_result, current_ll_matrix, current_filt] = ...
+                karuta_HMM_recog_realtime(mfcc_data, model_file, threshold, w, before_ll, before_filt);
+            before_ll = current_ll_matrix(:, end); before_filt = current_filt;
+            
+            [max_p, max_idx] = max(posterior_result(:, end));
+            
+            if max_p > 0.1
+                stars = repmat('★', 1, lock_counter);
+                fprintf('  有力: 札%d (%.1f%%) %s\n', max_idx, max_p*100, stars);
+            end
+            
+            if max_p > 0.999
+                lock_counter = lock_counter + 1;
+            else
+                lock_counter = 0; 
+            end
+            
+            if lock_counter >= consecutive_limit
+                recog_locked = true;
+                recog_fuda_index = max_idx;
+                disp(['=== 決まり字確定！ 札: ', num2str(recog_fuda_index), ' ===']);
+            end
             
         else
-            % 認識が確定しなかった場合、バッファの先頭部分を少し削除して
-            % 次のフレームで新しい音声が追加されるようにする (スライディングウィンドウ)
-            slide_amount_sec = 0.1; % 100ms
-            slide_amount_samples = round(slide_amount_sec * Fs_target);
-            
-            if length(audio_buffer_for_hmm) > slide_amount_samples
-                audio_buffer_for_hmm = audio_buffer_for_hmm(slide_amount_samples+1:end);
-            else
-                audio_buffer_for_hmm = []; % バッファがスライド量より小さい場合はクリア
+            if started
+                disp('<<< 無音検知によりリセット <<<');
+                started = false; silence_counter = 0; lock_counter = 0;
+                before_ll = zeros(num_fuda, 1); before_filt = zeros(N, num_fuda);
             end
         end
     end
     
-    % タイムアウト処理 (例: 30秒)
-    if toc > 30
-        disp('タイムアウトしました。');
-        break;
-    end
+    if toc > 60, disp('タイムアウト'); break; end
 end
 
-release(deviceReader); % デバイスを解放
-disp('リアルタイム認識を終了します。');
+release(deviceReader);
 
-% === 認識確定後のファイル保存処理 ===
-if recog_fuda_index > 0 && recog_locked
-    disp('*** 決まり字が確定しました！確定区間の音声をファイル保存します ***');
-    
-    % 簡単化のため、認識確定までの全音声を保存する
-    audioToSave = fullAudioBuffer;
-    kimariji_second = length(audioToSave) / Fs_target;
-    
+if recog_locked && ~is_offline
     try
-        if ~exist(output_dir, 'dir')
-            mkdir(output_dir);
-        end
-        timestamp = datestr(now, 'yyyymmddHHMMSSFFF');
+        if ~exist(output_dir, 'dir'), mkdir(output_dir); end
+        timestamp = datestr(now, 'yyyymmddHHMMSS');
         output_filename = fullfile(output_dir, ...
             [output_base_name '_idx' num2str(recog_fuda_index) '_' timestamp '.wav']);
         
-        audiowrite(output_filename, audioToSave, Fs_target);
-        
-        disp(['ファイル保存が完了しました。保存先: ', output_filename]);
-        disp(['保存音声長: ', num2str(kimariji_second), ' 秒']);
-        
-    catch ME_save
-        disp('ファイル保存エラーが発生しました。');
-        disp(['エラーメッセージ: ' ME_save.message]);
-    end
+        audiowrite(output_filename, fullAudioBuffer, Fs_target);
+        disp(['音声を保存しました: ', output_filename]);
+        disp(['認識までの時間: ', num2str(length(fullAudioBuffer)/Fs_target), ' 秒']);
+    catch ME, disp(['保存エラー: ', ME.message]); end
 end
