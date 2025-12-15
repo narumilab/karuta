@@ -3,7 +3,7 @@ addpath('Lee_HMM');
 
 % === ユーザー設定 ===
 model_file = 'models_state30/iter10.mat'; 
-input_wav_path = './aihara_test/nageke/nageke1.wav'; 
+input_wav_path = './aihara_test/ooke/ooke1.wav'; 
 
 % 'online' で自動テスト
 if ~exist('run_mode', 'var'), run_mode = 'online'; end
