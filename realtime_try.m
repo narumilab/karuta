@@ -11,7 +11,7 @@ is_offline = strcmpi(run_mode, 'offline');
 
 Fs_target = 44100; 
 l = 0.01; 
-threshold = 0.9999;
+threshold = 0.95;
 w = 0.1;
 
 % バッファサイズ 0.3秒
@@ -21,10 +21,10 @@ consecutive_limit = 3;
 
 % マイク設定
 silenceThresh = 0.03; 
-input_gain = 1.5; % ★5.0は大きすぎてノイズ誤爆の元なので、1.5くらいに下げます
+input_gain = 1.5; 
 
-output_dir = './kimariji_outputs';     
-output_base_name = 'recog_kimariji'; 
+output_dir = './kimariji_outputs';
+output_base_name = 'recog_kimariji';
 
 % === HMM初期化 ===
 load(model_file, 'mean_vec_i_m');
@@ -34,15 +34,15 @@ N = size(mean_vec_i_m, 2);
 
 before_ll = zeros(num_fuda, 1);       
 before_filt = zeros(N, num_fuda);     
-recog_locked = false;                 
-lock_counter = 0; 
+recog_locked = false;
+lock_counter = 0;
 recog_fuda_index = 0; 
 
 % =========================================================
 % [モードA] オフライン分析
 % =========================================================
 if is_offline
-    disp(['--- オフライン分析モード ---']);
+    disp(['オフライン分析']);
     [y, Fs_in] = audioread(input_wav_path);
     if Fs_in ~= Fs_target, y = resample(y, Fs_target, Fs_in); end
     
@@ -66,7 +66,7 @@ if is_offline
             
             % ★修正ポイント(Offline): 最新のフレーム（最後尾）を使う
             latest_idx = size(mfcc_block, 1); 
-            mfcc_data = mfcc_block(latest_idx, :)'; 
+            mfcc_data = mfcc_block(latest_idx, :); 
 
             [~, ~, posterior_result, current_ll_matrix, current_filt] = ...
                 karuta_HMM_recog_realtime(mfcc_data, model_file, threshold, w, before_ll, before_filt);
@@ -81,6 +81,7 @@ if is_offline
                 if ~exist(output_dir, 'dir'), mkdir(output_dir); end
                 timestamp = datestr(now, 'yyyymmddHHMMSS');
                 output_filename = fullfile(output_dir, [output_base_name '_OFFLINE_REF_idx' num2str(max_idx) '_' timestamp '.wav']);
+                disp(['音声を保存しました: ', output_filename]);
                 cut_end_idx = min(current_pos + step_samples - 1, length(y));
                 audiowrite(output_filename, y(1:cut_end_idx), Fs_target);
                 return;
@@ -168,7 +169,7 @@ while ~recog_locked
             % バッファの「真ん中」ではなく「一番後ろ（最新）」を取る！
             % これで無音（過去）ではなく、今鳴った音（現在）を認識できます
             latest_idx = size(mfcc_block, 1); 
-            mfcc_data = mfcc_block(latest_idx, :)'; 
+            mfcc_data = mfcc_block(latest_idx, :); 
             
             [~, ~, posterior_result, current_ll_matrix, current_filt] = ...
                 karuta_HMM_recog_realtime(mfcc_data, model_file, threshold, w, before_ll, before_filt);
