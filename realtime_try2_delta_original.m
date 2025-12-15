@@ -39,6 +39,7 @@ recog_sequence_log = [];
 
 shift_fix = 0;
 shift_error = 0;
+shift_error = 0;
 
 % === HMM状態の初期化 ===
 
@@ -58,14 +59,15 @@ bufLen   = round(l * Fs);       % 10 ms
 deviceReader = audioDeviceReader('Device', 'ステレオ ミキサー (Realtek(R) Audio)', ...
     'SampleRate', Fs, ...
     'SamplesPerFrame', bufLen);
-disp('Listening... (waiting for non-silent input)');
+disp('Listening... (waiting for non-silent input)')
 % --- リアルタイム処理バッファの初期化 ---
 ringBuffer = [];
 fullAudioBuffer = []; % ファイル保存のために全音声データを累積
 fullmfcc = [];
 started = false;
-silenceThresh = 0.0007; 
+%silenceThresh = 0.0007; 
 %silenceThresh = 0.0001470000014;
+silenceThresh = -9.5; 
 
 
 % ⭐ 追加 1: オーバーラン情報を記録するリストを初期化 ⭐
@@ -85,45 +87,40 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
     
     % --- 無音検出 ---
     %rmsVal = sqrt(mean(audioRecorded.^2));
-    rmsVal = max(abs(audioRecorded));
-    if ~started
-        if rmsVal > silenceThresh
-            started = true;
-            disp("Sound detected! Starting MFCC processing...");
-        else
-            continue; % 無音なのでスキップ
-        end
-    end
+    %rmsVal = max(abs(audioRecorded));
+    %if ~started
+        %if rmsVal > silenceThresh
+            %started = true;
+            %disp("Sound detected! Starting MFCC processing...");
+        %else
+            %continue; % 無音なのでスキップ
+        %end
+    %end
+   
     
+  
     ringBuffer = [ringBuffer; audioRecorded]; 
     fullAudioBuffer = [fullAudioBuffer; audioRecorded]; % ファイル保存のため累積
     g = length(ringBuffer);
     accumulated_frame_count = accumulated_frame_count + 1;
-     % --- MFCC処理 ---
+
    
     if length(ringBuffer) >= frameLen;
-        
+        % --- MFCC処理 ---
         frame = ringBuffer(1:frameLen);
         a=length(ringBuffer);
         c=length(frame);
         [coeffs, delta, deltaDelta] = mfcc(frame, Fs);
         mfcc_matrix_current = [coeffs, delta, deltaDelta];
-        if mfcc_count==0
-            mfcc_count = mfcc_count + 1; % Increment the MFCC count
-            mfcc_matrix_current_block = mfcc_matrix_current(1:17,:);
-        else
-            mfcc_count = mfcc_count + 1;
-            mfcc_matrix_current_block = mfcc_matrix_current(17,:);
+        current_mfcc_c0 = mfcc_matrix_current(1, 1);
+        if ~started
+            % ⭐ 無音閾値チェック ⭐
+            if current_mfcc_c0 > silenceThresh
+                started = true;
+                start_recog =toc;
+                disp("Sound detected! Starting HMM recognition...");
+            end 
         end
-        fullmfcc = [fullmfcc;mfcc_matrix_current_block];
-        % ⭐ 修正 1: HMMには最新の1フレームのみを渡す (次元数 x 1 に転置)
-        mfcc_data = mfcc_matrix_current_block'; 
-        
-        % 累積フレーム数をカウント
-        
-        
-        fprintf("MFCC computed at %.3f sec. Total frames: %d\n", toc, accumulated_frame_count);
-       
         ringBuffer(1:shift) = []; % シフト量 (20ms) 分をのこす
         b = length(ringBuffer);
         if length(ringBuffer) > g-(Fs*0.01)
@@ -134,106 +131,135 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
         end
         if length(ringBuffer) < g-(Fs*0.01)
             disp('欠落しました');
-            check_data = check_data + 1;
+            shift_error = shift_error + 1;
 
-            
         end
-      
-        % --- HMM認識処理 ---
-        disp('--- 2. HMM認識の実行 ---');
+        
+        % ⭐⭐⭐ 修正 3: HMM認識の実行条件を started == true に変更 ⭐⭐⭐
+        if started
 
-        p=size(mfcc_data,2);
-        for s=1:size(mfcc_data,2);
+            if mfcc_count==0
+                mfcc_count = mfcc_count + 1; % Increment the MFCC count
+                mfcc_matrix_current_block = mfcc_matrix_current(1:17,:);
+            else
+                mfcc_count = mfcc_count + 1;
+                mfcc_matrix_current_block = mfcc_matrix_current(17,:);
+            end
+            fullmfcc = [fullmfcc;mfcc_matrix_current_block];
+            % ⭐ 修正 1: HMMには最新の1フレームのみを渡す (次元数 x 1 に転置)
+            mfcc_data = mfcc_matrix_current_block'; 
             
-            for k=1:num_fuda;
-               
-                l = 0;
-                pred = filt(:,k)'*a_i_j_m(:,:,k);
-                for i=2:N-1 
-                    emission_prob = exp(logDiagGaussian(mfcc_data(1:14,s),mean_vec_i_m(1:14,i,k),var_vec_i_m(1:14,i,k)));
-                    l = l + pred(i) * emission_prob;
-                    filt(i,k) = pred(i) * emission_prob;
-                end
-                ll(k) = ll(k)+log(l);
-                filt(:,k) = filt(:,k)/sum(filt(:,k));
-            end
-            posterior = exp(w*(ll-max(ll)));
-            posterior = posterior/sum(posterior);
+            % 累積フレーム数をカウント
             
-            if max(posterior) > threshold
-                %recog_time = t;
-                [~,recog_fuda] = max(posterior);
-                break
+            
+            fprintf("MFCC computed at %.3f sec. Total frames: %d\n", toc, accumulated_frame_count);
+           
+            
+            if length(ringBuffer) < g-(Fs*0.01)
+                disp('欠落しました');
+                shift_error = shift_error + 1;
+
             end
-              
-               
-            % ⭐⭐⭐ 最新の事後確率を表示 ⭐⭐⭐
-            disp('--- 最新の札別 潜在確率 (Posterior) ---');
-            for k = 1:num_fuda
-    %            fprintf('  札 %d: %.6f\n', k, posterior_result(k, end) * 100); 
-                fprintf('  札 %d: %.6f\n', k, posterior(k) * 100); 
-            end
-        end
-        % ⭐ 変更 3: 状態変数を更新し、次のステップへ引き継ぐ (リセットはしない) ⭐
-        %before_ll = current_ll_matrix(:, end) ;
-        %before_filt = current_filt;            
-        
-        % --- 結果表示 ---
-        disp('--- 認識結果 ---');
-        disp(['認識された札のインデックス: ', num2str(recog_fuda)]);
-        disp(['決まり字確定フレームインデックス (累積): ', num2str(accumulated_frame)]);
-        
-        % ⭐⭐⭐ 決まり字確定時の音声ファイル保存ロジック ⭐⭐⭐
-        % 変更 4: recog_locked フラグでファイル保存を一度だけ行う制御に変更
-        if recog_fuda ~= fuda 
           
-            fuda = recog_fuda;
-            % ⭐ 追加 4: 確定した札のインデックスを記録 ⭐
-            recog_sequence_log = [recog_sequence_log, recog_fuda];
-            disp('*** 決まり字が確定しました！確定区間の音声をファイル保存します (状態は継続) ***');
-            
-            % ⭐ 修正 4: 確定フレーム数は累積カウントを使用 ⭐
-            total_recog_frame = accumulated_frame;
-            
-            % 確定時点までの秒数を計算 (frame_shift_sec は 10ms)
-            kimariji_second = frame_shift_sec * (total_recog_frame - 1) + n; 
-            
-            % 全体の音声バッファから、その秒数に対応するサンプル数を切り出す
-            kimariji_samples = ceil(kimariji_second * Fs);
-            
-            if kimariji_samples > length(fullAudioBuffer)
-                kimariji_samples = length(fullAudioBuffer);
-                disp('警告: 計算されたサンプル数が現在のバッファ長を超過したため、バッファ全体を保存します。');
-            end
-            
-            audioToSave = fullAudioBuffer(1:kimariji_samples); 
-            
-            try
-                if ~exist(output_dir, 'dir')
-                    mkdir(output_dir);
+            % --- HMM認識処理 ---
+            disp('--- 2. HMM認識の実行 ---');
+    
+            p=size(mfcc_data,2);
+            for s=1:size(mfcc_data,2);
+                
+                for k=1:num_fuda;
+                   
+                    l = 0;
+                    pred = filt(:,k)'*a_i_j_m(:,:,k);
+                    for i=2:N-1 
+                        emission_prob = exp(logDiagGaussian(mfcc_data(1:14,s),mean_vec_i_m(1:14,i,k),var_vec_i_m(1:14,i,k)));
+                        l = l + pred(i) * emission_prob;
+                        filt(i,k) = pred(i) * emission_prob;
+                    end
+                    ll(k) = ll(k)+log(l);
+                    filt(:,k) = filt(:,k)/sum(filt(:,k));
                 end
-                timestamp = datestr(now, 'yyyymmddHHMMSSFFF');
-                output_filename = fullfile(output_dir, ...
-                    [output_base_name '_idx' num2str(recog_fuda) '_' timestamp '.wav']);
+                posterior = exp(w*(ll-max(ll)));
+                posterior = posterior/sum(posterior);
                 
-                audiowrite(output_filename, audioToSave, Fs); 
+                if max(posterior) > threshold
+                    %recog_time = t;
+                    [~,recog_fuda] = max(posterior);
+                    break
+                end
+                  
+                   
+                % ⭐⭐⭐ 最新の事後確率を表示 ⭐⭐⭐
+                disp('--- 最新の札別 潜在確率 (Posterior) ---');
+                for k = 1:num_fuda
+        %            fprintf('  札 %d: %.6f\n', k, posterior_result(k, end) * 100); 
+                    fprintf('  札 %d: %.6f\n', k, posterior(k) * 100); 
+                end
+            end
+            % ⭐ 変更 3: 状態変数を更新し、次のステップへ引き継ぐ (リセットはしない) ⭐
+            %before_ll = current_ll_matrix(:, end) ;
+            %before_filt = current_filt;            
+            
+            % --- 結果表示 ---
+            disp('--- 認識結果 ---');
+            disp(['認識された札のインデックス: ', num2str(recog_fuda)]);
+            disp(['決まり字確定フレームインデックス (累積): ', num2str(accumulated_frame_count)]);
+            
+            % ⭐⭐⭐ 決まり字確定時の音声ファイル保存ロジック ⭐⭐⭐
+            % 変更 4: recog_locked フラグでファイル保存を一度だけ行う制御に変更
+            if recog_fuda ~= fuda 
+                end_recog = toc;
+                total_sec = end_recog - start_recog; 
+                fprintf("決まり字が確定しました！ %.3f sec. Total frames: %d\n", total_sec, accumulated_frame_count);
+                fuda = recog_fuda;
+                % ⭐ 追加 4: 確定した札のインデックスを記録 ⭐
+                recog_sequence_log = [recog_sequence_log, recog_fuda];
+                disp('*** 決まり字が確定しました！確定区間の音声をファイル保存します (状態は継続) ***');
                 
-                disp(['ファイル保存が完了しました。保存先: ', output_filename]);
-                disp(['保存音声長: ', num2str(kimariji_second), ' 秒']);
+                % ⭐ 修正 4: 確定フレーム数は累積カウントを使用 ⭐
+                total_recog_frame = accumulated_frame_count;
                 
-            catch ME_save
-                disp('ファイル保存エラーが発生しました。');
-                disp(['エラーメッセージ: ' ME_save.message]);
+                % 確定時点までの秒数を計算 (frame_shift_sec は 10ms)
+                kimariji_second = frame_shift_sec * (total_recog_frame - 1) + n; 
+                
+                % 全体の音声バッファから、その秒数に対応するサンプル数を切り出す
+                kimariji_samples = ceil(kimariji_second * Fs);
+                
+                if kimariji_samples > length(fullAudioBuffer)
+                    kimariji_samples = length(fullAudioBuffer);
+                    disp('警告: 計算されたサンプル数が現在のバッファ長を超過したため、バッファ全体を保存します。');
+                end
+                
+                audioToSave = fullAudioBuffer(1:kimariji_samples); 
+                
+                try
+                    if ~exist(output_dir, 'dir')
+                        mkdir(output_dir);
+                    end
+                    timestamp = datestr(now, 'yyyymmddHHMMSSFFF');
+                    output_filename = fullfile(output_dir, ...
+                        [output_base_name '_idx' num2str(recog_fuda) '_' timestamp '.wav']);
+                    
+                    audiowrite(output_filename, audioToSave, Fs); 
+                    
+                    disp(['ファイル保存が完了しました。保存先: ', output_filename]);
+                    disp(['保存音声長: ', num2str(kimariji_second), ' 秒']);
+                    
+                catch ME_save
+                    disp('ファイル保存エラーが発生しました。');
+                    disp(['エラーメッセージ: ' ME_save.message]);
+                end
+                
+                % *** HMM状態リセット処理はここには追加しません ***
             end
             
-            % *** HMM状態リセット処理はここには追加しません ***
+            % ⭐ 追加: ファイル保存後も、HMMの状態は before_ll と before_filt を介して次のループに引き継がれる
         end
-        
-        % ⭐ 追加: ファイル保存後も、HMMの状態は before_ll と before_filt を介して次のループに引き継がれる
     end
 end
 release(deviceReader);
 disp('処理終了');
+
 
 % ========================================
 % ⭐ 追加 5: 決まり字シーケンスの最終出力 ⭐
