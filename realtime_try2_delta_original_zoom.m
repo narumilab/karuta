@@ -57,11 +57,6 @@ shift    = round(frame_shift_sec * Fs); % 10 ms
 bufLen   = round(l * Fs);       % 10 ms 
 
 
-% === 入力デバイス設定 ===
-deviceReader = audioDeviceReader('Device', 'ステレオ ミキサー (Realtek(R) Audio)', ...
-    'SampleRate', Fs, ...
-    'SamplesPerFrame', bufLen);
-disp('Listening... (waiting for non-silent input)')
 % --- リアルタイム処理バッファの初期化 ---
 ringBuffer = [];
 fullAudioBuffer = []; % ファイル保存のために全音声データを累積
@@ -275,7 +270,6 @@ while toc < 10  % 10 秒間モニタ
         end
     end
 end
-release(deviceReader);
 disp('処理終了');
 
 

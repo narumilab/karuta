@@ -1,7 +1,7 @@
 % === 1. ユーザー設定 ===
 file1_name = 'mfcc比較\生データ\offline_delta_original_ooke1.mat'; % 比較対象の1つ目の.matファイル名
 file2_name = 'mfcc比較\生データ\offline_devide_delta_original_ooke1.mat'; % 比較対象の1つ目の.matファイル名 after
-file3_name = 'mfcc比較\生データ\realtime_delta_original_ooke1.mat';%before
+file3_name = 'mfcc比較\生データ\realtime_delta_original_ooke1_power.mat';%before
 
 variable_name = 'mfcc_data'; % .matファイルに保存されている行列の変数名
 variable2_name = 'fullmfcc';

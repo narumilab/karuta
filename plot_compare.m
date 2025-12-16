@@ -13,7 +13,7 @@ h_target_axes = gca;
 % 3. 2つ目のfigファイルからデータを取得してプロット
 % ----------------------------------------
 % figファイルを開く
-h_fig2 = openfig('plot\realtime_wasura1_aligment.fig', 'invisible'); 
+h_fig2 = openfig('plot\realtime_ooe1_mac.fig', 'invisible'); 
 % Figure内のAxesオブジェクトを見つける
 h_axes2 = findobj(h_fig2, 'Type', 'Axes'); 
 if ~isempty(h_axes2)
@@ -40,7 +40,7 @@ close(h_fig2);
 % 2. 1つ目のfigファイルからデータを取得してプロット
 % ----------------------------------------
 % figファイルを開く
-h_fig1 = openfig('plot\offline_waura1_0.00005.fig', 'invisible');
+h_fig1 = openfig('plot\realtime_ooe2_windows.fig', 'invisible');
 % Figure内のAxesオブジェクト（グラフ本体）を見つける
 h_axes1 = findobj(h_fig1, 'Type', 'Axes'); 
 if ~isempty(h_axes1)

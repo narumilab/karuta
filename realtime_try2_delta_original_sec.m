@@ -79,7 +79,7 @@ end
 % ⭐==========================================⭐
 
 % === 入力デバイス設定 ===
-deviceReader = audioDeviceReader('Device', 'マイク配列 (Realtek(R) Audio)', ...
+deviceReader = audioDeviceReader('Device', 'ステレオ ミキサー (Realtek(R) Audio)', ...
     'SampleRate', Fs, ...
     'SamplesPerFrame', bufLen);
 disp('Listening... (waiting for non-silent input)')
@@ -103,8 +103,12 @@ tic
 while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
     [audioRecorded, numOverrun] = deviceReader(); % 音声を取得 (10ms分)
     if numOverrun > 0
+        % 1. ターミナルに警告を表示
         fprintf('⚠️ 警告: フレーム %d (%.3f秒) で**オーバーラン**が発生しました。欠落サンプル数: %d\n', ...
             accumulated_frame_count + 1, toc, numOverrun);
+        
+        % 2. ここで overrun_log にデータを追加する
+        overrun_log{end+1} = [accumulated_frame_count + 1, toc, numOverrun];
     end
     
     
@@ -319,21 +323,21 @@ else
 end
 
 
-%try
+try
     % 音声データのサンプリング周波数とデータ長を取得
-    %TotalSamples = length(fullAudioBuffer);
-    %TimeDuration = TotalSamples / Fs;
+    TotalSamples = length(fullAudioBuffer);
+    TimeDuration = TotalSamples / Fs;
     
     % 時間ベクトルを作成
-    %time_vector = (0:TotalSamples-1) / Fs;
+    time_vector = (0:TotalSamples-1) / Fs;
     
-    %figure;
-    %plot(time_vector, fullAudioBuffer);
-    %title('全入力音声波形');
-    %xlabel('時間 (秒)');
-    %ylabel('振幅');
-    %grid on;
-    %disp(['プロットが完了しました。音声総時間: ', num2str(TimeDuration, '%.3f'), ' 秒']);
-%catch ME_plot
-    %disp(['波形プロット中にエラーが発生しました: ', ME_plot.message]);
-%end
+    figure;
+    plot(time_vector, fullAudioBuffer);
+    title('全入力音声波形');
+    xlabel('時間 (秒)');
+    ylabel('振幅');
+    grid on;
+    disp(['プロットが完了しました。音声総時間: ', num2str(TimeDuration, '%.3f'), ' 秒']);
+catch ME_plot
+    disp(['波形プロット中にエラーが発生しました: ', ME_plot.message]);
+end

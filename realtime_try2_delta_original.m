@@ -4,7 +4,7 @@ addpath('Lee_HMM');
 % === ユーザー設定部分 ===
 model_file = 'models_state30/iter10.mat'; % HMM学習済みモデル 
 
-%input_wav_path = './aihara_test/wasura/wasura1.wav'; 
+input_wav_path = './aihara_test/ooke/ooke1.wav'; 
 %[y, Fs] = audioread(input_wav_path);
 %Fs = 48000;
 Fs = 44100;
@@ -55,6 +55,29 @@ shift_check = round(m * Fs);
 frame_shift_sec = n - m;        % 10 ms 
 shift    = round(frame_shift_sec * Fs); % 10 ms 
 bufLen   = round(l * Fs);       % 10 ms 
+
+% ⭐=== カウントダウンと音声再生ロジックの追加 ===⭐
+try
+    [y_play, Fs_play] = audioread(input_wav_path);
+    % 振幅を正規化し、音が大きすぎないように調整 (0.8倍)
+    %y_play = y_play / max(abs(y_play)) * 0.8; 
+    
+    disp('--- 自動テスト開始 ---');
+    disp('3秒後にPCから音声を再生し、同時にマイクで聞き取ります...');
+    pause(1); disp('2...');
+    pause(1); disp('1...');
+    
+    % ⭐ 音声再生開始 ⭐
+    disp('>>> NOW PLAYING AUDIO >>>');
+    sound(y_play, Fs_play); 
+    played_flag = true; % 再生フラグを設定 (このコードでは不要ですが、最初の例に合わせて追加)
+    
+catch ME_audio
+    disp(['⚠️ 警告: 音声ファイルの読み込みまたは再生に失敗しました。', ME_audio.message]);
+    played_flag = false;
+end
+% ⭐==========================================⭐
+
 % === 入力デバイス設定 ===
 deviceReader = audioDeviceReader('Device', 'ステレオ ミキサー (Realtek(R) Audio)', ...
     'SampleRate', Fs, ...
@@ -78,6 +101,7 @@ mfcc_count=0;
 
 tic
 while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
+ 
     [audioRecorded, numOverrun] = deviceReader(); % 音声を取得 (10ms分)
     if numOverrun > 0
         fprintf('⚠️ 警告: フレーム %d (%.3f秒) で**オーバーラン**が発生しました。欠落サンプル数: %d\n', ...
@@ -121,6 +145,7 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
                 disp("Sound detected! Starting HMM recognition...");
             end 
         end
+        start_recog =toc;
         ringBuffer(1:shift) = []; % シフト量 (20ms) 分をのこす
         b = length(ringBuffer);
         if length(ringBuffer) > g-(Fs*0.01)
