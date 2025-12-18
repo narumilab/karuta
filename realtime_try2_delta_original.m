@@ -200,13 +200,13 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
             end
             % ファイル保存のため累積
             power = [power current_power];
-            if mfcc_count==0
-                mfcc_count = mfcc_count + 1; % Increment the MFCC count
-                mfcc_matrix_current_block = mfcc_matrix_current(1:17,:);
-            else
+            %if mfcc_count==0
+                %mfcc_count = mfcc_count + 1; % Increment the MFCC count
+                %mfcc_matrix_current_block = mfcc_matrix_current(1:17,:);
+            %else
                 mfcc_count = mfcc_count + 1;
                 mfcc_matrix_current_block = mfcc_matrix_current(17,:);
-            end
+            %end
             fullmfcc = [fullmfcc;mfcc_matrix_current_block];
             % ⭐ 修正 1: HMMには最新の1フレームのみを渡す (次元数 x 1 に転置)
             mfcc_data = mfcc_matrix_current_block'; 
