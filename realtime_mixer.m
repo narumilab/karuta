@@ -4,11 +4,12 @@ addpath('Lee_HMM');
 % === ユーザー設定 ===
 model_file = 'models_state30/iter10.mat'; 
 input_wav_path = './aihara_test/ooke/ooke1.wav'; 
+
 run_mode = 'online'; 
 
 % レート設定
-Fs_device = 48000; % BlackHole
-Fs_model  = 44100; % モデル
+Fs_device = 48000; % BlackHoleからの入力
+Fs_model  = 44100; % モデルの形式
 
 l = 0.01; 
 threshold = 0.9999;
@@ -16,12 +17,13 @@ w = 0.1;
 context_duration = 0.3; 
 consecutive_limit = 3; 
 
-% ★★★ 修正1: Gainを「4.0」に適正化 ★★★
-% 1.6 (現在の最大) ÷ 10 (前のGain) = 0.16 (元の音)
-% 0.16 × 4.0 = 0.64 (理想的な音量)
-input_gain = 4.0;  
+% ★★★ 修正1: デジタル増幅（ブースト） ★★★
+% 音が小さい場合、ここで無理やり大きくします
+input_gain = 2.0;  % 1.0 -> 10.0 に変更
 
-silenceThresh = 0.02; % ノイズ対策で少し余裕を持たせる
+% ★★★ 修正2: 閾値の調整 ★★★
+% ブースト後の音量に合わせて調整
+silenceThresh = 0.05; 
 
 output_dir = './kimariji_outputs';     
 output_base_name = 'recog_kimariji'; 
@@ -39,13 +41,12 @@ lock_counter = 0;
 recog_fuda_index = 0; 
 
 % =========================================================
-% [モードB] BlackHole 入力最適化モード
+% [モードB] BlackHole 入力増幅モード
 % =========================================================
 disp('==================================================');
-disp('   🎧 BlackHole Input (Optimized Gain)   ');
+disp('   🎧 BlackHole Input (High Gain Mode)   ');
 disp('==================================================');
 disp('準備完了。音声を再生してください。');
-disp('目標レベル: 0.5 〜 0.9 の間');
 disp('--------------------------------------------------');
 
 context_samples_model = round(context_duration * Fs_model); 
@@ -66,6 +67,7 @@ started = false;
 silence_counter = 0;
 lock_counter = 0; 
 
+% リサンプラー
 src = dsp.SampleRateConverter('InputSampleRate', Fs_device, 'OutputSampleRate', Fs_model);
 
 tic;
@@ -76,28 +78,20 @@ while ~recog_locked
         acquiredAudio_48k = mean(acquiredAudio_48k, 2);
     end
     
-    % 2. リサンプリング
+    % 2. リサンプリング (48k -> 44.1k)
     acquiredAudio_44k = src(acquiredAudio_48k);
     
-    % 3. 増幅
+    % 3. ★強制増幅★
     acquiredAudio_44k = acquiredAudio_44k * input_gain;
     
-    % ★★★ 修正2: リミッター（音割れ防止） ★★★
-    % 万が一 1.0 を超えても、そこで数値を止めてエラーを防ぐ
-    acquiredAudio_44k(acquiredAudio_44k > 1.0) = 1.0;
-    acquiredAudio_44k(acquiredAudio_44k < -1.0) = -1.0;
-    
-    % --- 音量デバッグ表示 ---
+    % --- 音量デバッグ表示 (重要) ---
+    % 現在、MATLABがどれくらいの音量を受け取っているかを表示
     vol = max(abs(acquiredAudio_44k));
     if vol > 0.01 && ~started
-        % 0.9を超えたら警告を表示
-        if vol >= 1.0
-             fprintf('⚠️ 音量が大きすぎます(Clip)! PCの音量を少し下げてください: %.4f\n', vol);
-        else
-             fprintf('現在の入力レベル: %.4f (良好: 0.5-0.9)\n', vol);
-        end
+        fprintf('現在の入力レベル: %.4f (目標: 0.1以上)\n', vol);
     end
-    
+    % ---------------------------
+
     ringBuffer = [ringBuffer; acquiredAudio_44k];
     if length(ringBuffer) > context_samples_model
         ringBuffer(1:length(ringBuffer)-context_samples_model) = [];
@@ -111,6 +105,7 @@ while ~recog_locked
         else
             if started
                 silence_counter = silence_counter + 1;
+                % ★修正3: 音切れ防止のため、無音許容時間を少し伸ばす
                 if silence_counter <= 50, is_active = true; else, is_active = false; end
             else, is_active = false; end
         end
@@ -173,7 +168,7 @@ if recog_locked
         if ~exist(output_dir, 'dir'), mkdir(output_dir); end
         timestamp = datestr(now, 'yyyymmddHHMMSS');
         output_filename = fullfile(output_dir, ...
-            [output_base_name '_BLACKHOLE_OptGain_idx' num2str(recog_fuda_index) '_' timestamp '.wav']);
+            [output_base_name '_BLACKHOLE_HighGain_idx' num2str(recog_fuda_index) '_' timestamp '.wav']);
         
         audioToSave = fullAudioBuffer;
         if max(abs(audioToSave)) > 0
