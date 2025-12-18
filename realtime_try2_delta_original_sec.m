@@ -79,7 +79,7 @@ end
 % ⭐==========================================⭐
 
 % === 入力デバイス設定 ===
-deviceReader = audioDeviceReader('Device', 'ステレオ ミキサー (Realtek(R) Audio)', ...
+deviceReader = audioDeviceReader('Device', 'マイク配列 (Realtek(R) Audio)', ...
     'SampleRate', Fs, ...
     'SamplesPerFrame', bufLen);
 disp('Listening... (waiting for non-silent input)')
@@ -323,10 +323,10 @@ else
 end
 
 
-try
+%try
     % 音声データのサンプリング周波数とデータ長を取得
-    TotalSamples = length(fullAudioBuffer);
-    TimeDuration = TotalSamples / Fs;
+    %TotalSamples = length(fullAudioBuffer);
+    %TimeDuration = TotalSamples / Fs;
     
     % 時間ベクトルを作成
     time_vector = (0:TotalSamples-1) / Fs;
