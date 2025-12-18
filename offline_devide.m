@@ -54,7 +54,7 @@ tic
 
 % 例: './aihara_test/tsu/tsu1.wav' のように、フォルダ名とファイル名を含む完全なパスを指定してください。
 
-input_wav_path = './aihara_test/ooke/ooke1.wav'; 
+input_wav_path = './aihara_test/ooke/ooke4.wav'; 
 
 % ========================
 

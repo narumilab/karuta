@@ -4,7 +4,7 @@ addpath('Lee_HMM');
 % === ユーザー設定部分 ===
 model_file = 'models_state30/iter10.mat'; % HMM学習済みモデル 
 
-input_wav_path = './aihara_test/ooke/ooke1.wav'; 
+input_wav_path = './aihara_test/ooke/ooke2.wav'; 
 %[y, Fs] = audioread(input_wav_path);
 %Fs = 48000;
 Fs = 44100;
@@ -25,7 +25,8 @@ ll = zeros(num_fuda, 1);       % 累積尤度 (K x 1)
 posterior = zeros(num_fuda,1);
 filt = zeros(N, num_fuda); 
 filt(1, :) = 1.0;
-accumulated_frame_count = 0;          % 累積フレーム数
+accumulated_frame_count = 0;% 累積フレーム数
+frame_count = 0;          
 accumulated_frame = 0; 
 % ⭐ 追加: MFCCフレームの累積インデックス (30msフレーム単位)
 mfcc_frame_index = 0; 
@@ -56,41 +57,57 @@ frame_shift_sec = n - m;        % 10 ms
 shift    = round(frame_shift_sec * Fs); % 10 ms 
 bufLen   = round(l * Fs);       % 10 ms 
 
-% ⭐=== カウントダウンと音声再生ロジックの追加 ===⭐
-try
-    [y_play, Fs_play] = audioread(input_wav_path);
-    % 振幅を正規化し、音が大きすぎないように調整 (0.8倍)
-    %y_play = y_play / max(abs(y_play)) * 0.8; 
-    
-    disp('--- 自動テスト開始 ---');
-    disp('3秒後にPCから音声を再生し、同時にマイクで聞き取ります...');
-    pause(1); disp('2...');
-    pause(1); disp('1...');
-    
-    % ⭐ 音声再生開始 ⭐
-    disp('>>> NOW PLAYING AUDIO >>>');
-    sound(y_play, Fs_play); 
-    played_flag = true; % 再生フラグを設定 (このコードでは不要ですが、最初の例に合わせて追加)
-    
-catch ME_audio
-    disp(['⚠️ 警告: 音声ファイルの読み込みまたは再生に失敗しました。', ME_audio.message]);
-    played_flag = false;
-end
-% ⭐==========================================⭐
-
 % === 入力デバイス設定 ===
 deviceReader = audioDeviceReader('Device', 'ステレオ ミキサー (Realtek(R) Audio)', ...
     'SampleRate', Fs, ...
     'SamplesPerFrame', bufLen);
 disp('Listening... (waiting for non-silent input)')
+
+
+
+% ⭐=== カウントダウンと音声再生ロジックの追加 ===⭐
+%try
+    %[y_play, Fs_play] = audioread(input_wav_path);
+    % 振幅を正規化し、音が大きすぎないように調整 (0.8倍)
+    %y_play = y_play / max(abs(y_play)) * 0.8;
+    %if ~isempty(y_play)
+    %y_play = y_play / max(abs(y_play)); 
+    %end 
+    
+    %disp('--- 自動テスト開始 ---');
+    %disp('3秒後にPCから音声を再生し、同時にマイクで聞き取ります...');
+    %pause(1); disp('2...');
+    %pause(1); disp('1...');
+    
+    % ⭐ 音声再生開始 ⭐
+    %disp('>>> NOW PLAYING AUDIO >>>');
+    %sound(y_play, Fs_play); 
+    %played_flag = true; % 再生フラグを設定 (このコードでは不要ですが、最初の例に合わせて追加)
+    
+%catch ME_audio
+    %disp(['⚠️ 警告: 音声ファイルの読み込みまたは再生に失敗しました。', ME_audio.message]);
+    %played_flag = false;
+%end
+% ⭐==========================================⭐
+
+
 % --- リアルタイム処理バッファの初期化 ---
 ringBuffer = [];
 fullAudioBuffer = []; % ファイル保存のために全音声データを累積
 fullmfcc = [];
+full_current_power =[];
 started = false;
+audio_started = false;
 %silenceThresh = 0.0007; 
 %silenceThresh = 0.0001470000014;
-silenceThresh = -9.5; 
+%silenceThresh = -9.5; 
+%silenceThresh = 0.01;
+silenceThresh = 0.0001;
+%silenceThresh = 0.005; 
+%silenceThresh = y_play(1)
+
+power_over=0;
+power=[];
 
 
 % ⭐ 追加 1: オーバーラン情報を記録するリストを初期化 ⭐
@@ -104,8 +121,11 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
  
     [audioRecorded, numOverrun] = deviceReader(); % 音声を取得 (10ms分)
     if numOverrun > 0
+
         fprintf('⚠️ 警告: フレーム %d (%.3f秒) で**オーバーラン**が発生しました。欠落サンプル数: %d\n', ...
             accumulated_frame_count + 1, toc, numOverrun);
+        % 2. ここで overrun_log にデータを追加する
+        overrun_log{end+1} = [accumulated_frame_count + 1, toc, numOverrun];
     end
     
     
@@ -124,11 +144,11 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
     
   
     ringBuffer = [ringBuffer; audioRecorded]; 
-    fullAudioBuffer = [fullAudioBuffer; audioRecorded]; % ファイル保存のため累積
+    
     g = length(ringBuffer);
     accumulated_frame_count = accumulated_frame_count + 1;
 
-   
+    
     if length(ringBuffer) >= frameLen;
         % --- MFCC処理 ---
         frame = ringBuffer(1:frameLen);
@@ -136,17 +156,25 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
         c=length(frame);
         [coeffs, delta, deltaDelta] = mfcc(frame, Fs);
         mfcc_matrix_current = [coeffs, delta, deltaDelta];
-        current_mfcc_c0 = mfcc_matrix_current(1, 1);
+        %current_mfcc_c0 = mfcc_matrix_current(1, 1);
+        %current_power = sum(ringBuffer.^2) / length(ringBuffer);
+        %current_power = max(abs(ringBuffer(1:bufLen)));
+        current_power = rms(ringBuffer(1:bufLen));
+        full_current_power =[full_current_power current_power];
+        
         if ~started
             % ⭐ 無音閾値チェック ⭐
-            if current_mfcc_c0 > silenceThresh
+            %if current_mfcc_c0 > silenceThresh
+            if current_power > silenceThresh
+                
                 started = true;
                 start_recog =toc;
                 disp("Sound detected! Starting HMM recognition...");
+                
             end 
         end
-        start_recog =toc;
-        ringBuffer(1:shift) = []; % シフト量 (20ms) 分をのこす
+        
+       
         b = length(ringBuffer);
         if length(ringBuffer) > g-(Fs*0.01)
             shift_fix = shift_fix + 1;
@@ -162,7 +190,16 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
         
         % ⭐⭐⭐ 修正 3: HMM認識の実行条件を started == true に変更 ⭐⭐⭐
         if started
-
+            frame_count = frame_count + 1;
+            start_recog =toc;
+            if audio_started == false
+                fullAudioBuffer = [ringBuffer; audioRecorded]; 
+                audio_started = true; % 再生フラグを設定
+            else
+                fullAudioBuffer = [fullAudioBuffer; audioRecorded];
+            end
+            % ファイル保存のため累積
+            power = [power current_power];
             if mfcc_count==0
                 mfcc_count = mfcc_count + 1; % Increment the MFCC count
                 mfcc_matrix_current_block = mfcc_matrix_current(1:17,:);
@@ -177,7 +214,7 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
             % 累積フレーム数をカウント
             
             
-            fprintf("MFCC computed at %.3f sec. Total frames: %d\n", toc, accumulated_frame_count);
+            %fprintf("MFCC computed at %.3f sec. Total frames: %d\n", toc, frame_count);
            
             
             if length(ringBuffer) < g-(Fs*0.01)
@@ -228,21 +265,21 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
             % --- 結果表示 ---
             disp('--- 認識結果 ---');
             disp(['認識された札のインデックス: ', num2str(recog_fuda)]);
-            disp(['決まり字確定フレームインデックス (累積): ', num2str(accumulated_frame_count)]);
+            disp(['決まり字確定フレームインデックス (累積): ', num2str(frame_count)]);
             
             % ⭐⭐⭐ 決まり字確定時の音声ファイル保存ロジック ⭐⭐⭐
             % 変更 4: recog_locked フラグでファイル保存を一度だけ行う制御に変更
             if recog_fuda ~= fuda 
                 end_recog = toc;
                 total_sec = end_recog - start_recog; 
-                fprintf("決まり字が確定しました！ %.3f sec. Total frames: %d\n", total_sec, accumulated_frame_count);
+                fprintf("決まり字が確定しました！ %.3f sec. Total frames: %d\n", total_sec, frame_count);
                 fuda = recog_fuda;
                 % ⭐ 追加 4: 確定した札のインデックスを記録 ⭐
                 recog_sequence_log = [recog_sequence_log, recog_fuda];
                 disp('*** 決まり字が確定しました！確定区間の音声をファイル保存します (状態は継続) ***');
                 
                 % ⭐ 修正 4: 確定フレーム数は累積カウントを使用 ⭐
-                total_recog_frame = accumulated_frame_count;
+                total_recog_frame = frame_count;
                 
                 % 確定時点までの秒数を計算 (frame_shift_sec は 10ms)
                 kimariji_second = frame_shift_sec * (total_recog_frame - 1) + n; 
@@ -280,6 +317,7 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
             
             % ⭐ 追加: ファイル保存後も、HMMの状態は before_ll と before_filt を介して次のループに引き継がれる
         end
+        ringBuffer(1:shift) = []; % シフト量 (20ms) 分をのこす
     end
 end
 release(deviceReader);
@@ -334,21 +372,21 @@ else
 end
 
 
-%try
+try
     % 音声データのサンプリング周波数とデータ長を取得
-    %TotalSamples = length(fullAudioBuffer);
-    %TimeDuration = TotalSamples / Fs;
+    TotalSamples = length(fullAudioBuffer);
+    TimeDuration = TotalSamples / Fs;
     
     % 時間ベクトルを作成
-    %time_vector = (0:TotalSamples-1) / Fs;
+    time_vector = (0:TotalSamples-1) / Fs;
     
-    %figure;
-    %plot(time_vector, fullAudioBuffer);
-    %title('全入力音声波形');
-    %xlabel('時間 (秒)');
-    %ylabel('振幅');
-    %grid on;
-    %disp(['プロットが完了しました。音声総時間: ', num2str(TimeDuration, '%.3f'), ' 秒']);
-%catch ME_plot
-    %disp(['波形プロット中にエラーが発生しました: ', ME_plot.message]);
-%end
+    figure;
+    plot(time_vector, fullAudioBuffer);
+    title('全入力音声波形');
+    xlabel('時間 (秒)');
+    ylabel('振幅');
+    grid on;
+    disp(['プロットが完了しました。音声総時間: ', num2str(TimeDuration, '%.3f'), ' 秒']);
+catch ME_plot
+    disp(['波形プロット中にエラーが発生しました: ', ME_plot.message]);
+end

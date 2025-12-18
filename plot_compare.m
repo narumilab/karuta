@@ -13,7 +13,7 @@ h_target_axes = gca;
 % 3. 2つ目のfigファイルからデータを取得してプロット
 % ----------------------------------------
 % figファイルを開く
-h_fig2 = openfig('plot\realtime_ooe1_mac.fig', 'invisible'); 
+h_fig2 = openfig('plot\offline_ooke4.fig', 'invisible'); 
 % Figure内のAxesオブジェクトを見つける
 h_axes2 = findobj(h_fig2, 'Type', 'Axes'); 
 if ~isempty(h_axes2)
@@ -26,7 +26,7 @@ if ~isempty(h_axes2)
     
     % Lineオブジェクトが複数ある可能性があるため、ループで個別に設定
     for i = 1:length(h_line_copy2)
-        set(h_line_copy2(i), 'DisplayName', sprintf('波形 2 (データ %d)', i));
+        set(h_line_copy2(i), 'DisplayName', sprintf('波形 2 offline (データ %d)', i));
         set(h_line_copy2(i), 'Color', 'r'); % 赤色に設定
     end
 else
@@ -40,7 +40,7 @@ close(h_fig2);
 % 2. 1つ目のfigファイルからデータを取得してプロット
 % ----------------------------------------
 % figファイルを開く
-h_fig1 = openfig('plot\realtime_ooe2_windows.fig', 'invisible');
+h_fig1 = openfig('plot\realtime_ooke4_new.fig', 'invisible');
 % Figure内のAxesオブジェクト（グラフ本体）を見つける
 h_axes1 = findobj(h_fig1, 'Type', 'Axes'); 
 if ~isempty(h_axes1)
@@ -53,7 +53,7 @@ if ~isempty(h_axes1)
     
     % Lineオブジェクトが複数ある可能性があるため、ループで個別に設定
     for i = 1:length(h_line_copy1)
-        set(h_line_copy1(i), 'DisplayName', sprintf('波形 1 (データ %d)', i));
+        set(h_line_copy1(i), 'DisplayName', sprintf('波形 1 realtime (データ %d)', i));
         set(h_line_copy1(i), 'Color', 'b'); % 青色に設定
     end
  
