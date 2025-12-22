@@ -56,7 +56,7 @@ tic
 
 % 例: './aihara_test/tsu/tsu1.wav' のように、フォルダ名とファイル名を含む完全なパスを指定してください。
 
-input_wav_path = './aihara_test/ooko/ooko2.wav'; 
+input_wav_path = './aihara_test/nageke/nageke2.wav'; 
 
 % ========================
 
@@ -253,7 +253,7 @@ for start_idx = 1:block_size:(total_samples - block_size + 1)
             disp('*** 決まり字が確定しました！確定区間の音声をファイル保存します (状態は継続) ***');
             
             % ⭐ 修正 4: 確定フレーム数は累積カウントを使用 ⭐
-            total_recog_frame = accumulated_frame_count; 
+            total_recog_frame = accumulated_frame_count;
             
             % 確定時点までの秒数を計算 (frame_shift_sec は 10ms)
             kimariji_second = frame_shift_sec * (total_recog_frame - 1) + n; 
@@ -361,3 +361,5 @@ catch ME_plot
 end
 
 fprintf('欠落が　%d 回おきました', check_data);
+
+fprintf('　%d 回', total_recog_frame);

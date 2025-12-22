@@ -171,7 +171,7 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
         if length(ringBuffer) > frameLen
             ringBuffer(1 : length(ringBuffer)-frameLen) = [];
         end
-        frame_count = frame_count + 1;
+        
         
             
             
@@ -201,7 +201,7 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
             
          
             % --- HMM認識処理 ---
-            disp('--- 2. HMM認識の実行 ---');
+            %disp('--- 2. HMM認識の実行 ---');
     
             p=size(mfcc_data,2);
             for s=1:size(mfcc_data,2);
@@ -230,7 +230,7 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
 
                 if lock_counter >= 3 % consecutive_limit は 3 に設定
                     recog_locked = true;
-                    end_recog = toc;
+                    total_sec = toc - start_recog; 
     % ここで初めて「確定」とみなし、出力を表示
                 
                     [~,recog_fuda] = max(posterior);
@@ -244,7 +244,7 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
                     stars = repmat('★', 1, lock_counter);
                     max_p = max(posterior);
                     [max_val, max_idx] = max(posterior);
-                    fprintf('  候補: 札%d (%.1f%%) %s\n', max_idx, max_p*100, stars);
+                    fprintf('  候補: 札%d (%.2f%%) %s\n', max_idx, max_p*100, stars);
                 end
                 %for k = 1:num_fuda
         %            fprintf('  札 %d: %.6f\n', k, posterior_result(k, end) * 100); 
@@ -256,15 +256,15 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
             %before_filt = current_filt;            
             
             % --- 結果表示 ---
-            disp('--- 認識結果 ---');
-            disp(['認識された札のインデックス: ', num2str(recog_fuda)]);
-            disp(['決まり字確定フレームインデックス (累積): ', num2str(frame_count)]);
+            %disp('--- 認識結果 ---');
+            %disp(['認識された札のインデックス: ', num2str(recog_fuda)]);
+            %disp(['決まり字確定フレームインデックス (累積): ', num2str(frame_count)]);
             
             % ⭐⭐⭐ 決まり字確定時の音声ファイル保存ロジック ⭐⭐⭐
             % 変更 4: recog_locked フラグでファイル保存を一度だけ行う制御に変更
             if recog_fuda ~= fuda 
                 
-                total_sec = end_recog - start_recog; 
+                %total_sec = end_recog - start_recog; 
                 fprintf("決まり字が確定しました！ %.3f sec. Total frames: %d\n", total_sec, frame_count);
                 fuda = recog_fuda;
                 % ⭐ 追加 4: 確定した札のインデックスを記録 ⭐
@@ -281,7 +281,7 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
                 total_recog_frame = frame_count;
                 
                 % 確定時点までの秒数を計算 (frame_shift_sec は 10ms)
-                kimariji_second = frame_shift_sec * (total_recog_frame - 1) + n; 
+                kimariji_second = 0.01 * (total_recog_frame - 1) + 0.03; 
 
                 % ⭐ 追加：時刻と札番号をペアで記録
                 recog_timestamp_log = [recog_timestamp_log; recog_fuda, kimariji_second];
@@ -397,21 +397,21 @@ else
 end
 
 
-try
+%try
     % 音声データのサンプリング周波数とデータ長を取得
-    TotalSamples = length(fullAudioBuffer);
-    TimeDuration = TotalSamples / Fs;
+    %TotalSamples = length(fullAudioBuffer);
+    %TimeDuration = TotalSamples / Fs;
     
     % 時間ベクトルを作成
-    time_vector = (0:TotalSamples-1) / Fs;
+    %time_vector = (0:TotalSamples-1) / Fs;
     
-    figure;
-    plot(time_vector, fullAudioBuffer);
-    title('全入力音声波形');
-    xlabel('時間 (秒)');
-    ylabel('振幅');
-    grid on;
-    disp(['プロットが完了しました。音声総時間: ', num2str(TimeDuration, '%.3f'), ' 秒']);
-catch ME_plot
-    disp(['波形プロット中にエラーが発生しました: ', ME_plot.message]);
-end
+    %figure;
+    %plot(time_vector, fullAudioBuffer);
+    %title('全入力音声波形');
+    %xlabel('時間 (秒)');
+    %ylabel('振幅');
+    %grid on;
+    %disp(['プロットが完了しました。音声総時間: ', num2str(TimeDuration, '%.3f'), ' 秒']);
+%catch ME_plot
+    %disp(['波形プロット中にエラーが発生しました: ', ME_plot.message]);
+%end

@@ -15,7 +15,7 @@ l = 0.01;
 threshold = 0.9999;
 w = 0.1;
 context_duration = 0.19; 
-consecutive_limit = 3; 
+consecutive_limit = 1; 
 
 % ★★★ 修正1: デジタル増幅（ブースト） ★★★
 % 音が小さい場合、ここで無理やり大きくします
@@ -81,6 +81,8 @@ fullAudioBuffer = [];
 started = false;      
 silence_counter = 0;
 lock_counter = 0; 
+accumulated_frame_count = 0;
+frame_count = 0;
 
 % リサンプラー（Fs_device と Fs_model が異なる場合のみ使用）
 if Fs_device ~= Fs_model
@@ -93,13 +95,13 @@ tic;
 while ~recog_locked
     % 1. 取得 & モノラル化
      [acquiredAudio, numOverrun] = deviceReader();
-    
+    accumulated_frame_count = accumulated_frame_count + 1;
     if numOverrun > 0
 
         fprintf('⚠️ 警告: フレーム %d (%.3f秒) で**オーバーラン**が発生しました。欠落サンプル数: %d\n', ...
-            accumulated_frame_count + 1, toc, numOverrun);
+            accumulated_frame_count, toc, numOverrun);
         % 2. ここで overrun_log にデータを追加する
-        overrun_log{end+1} = [accumulated_frame_count + 1, toc, numOverrun];
+        overrun_log{end+1} = [accumulated_frame_count, toc, numOverrun];
     end
    
     if size(acquiredAudio, 2) > 1
@@ -149,10 +151,11 @@ while ~recog_locked
                 fullAudioBuffer = [ringBuffer; acquiredAudio]; 
                 %before_ll = zeros(num_fuda, 1); before_filt = zeros(N, num_fuda);
                 lock_counter = 0;
+                start_frame = accumulated_frame_count;
             else
                 fullAudioBuffer = [fullAudioBuffer; acquiredAudio];
             end
-            
+            frame_count = frame_count + 1;
 
             [coeffs, delta, deltaDelta] = mfcc(ringBuffer, Fs_model);
             mfcc_block = [coeffs, delta, deltaDelta];
@@ -194,7 +197,7 @@ while ~recog_locked
                     stars = repmat('★', 1, lock_counter);
                     max_p = max(posterior);
                     [max_val, max_idx] = max(posterior);
-                    fprintf('  候補: 札%d (%.1f%%) %s\n', max_idx, max_p*100, stars);
+                    fprintf('  候補: 札%d (%.2f%%) %s\n', max_idx, max_p*100, stars);
                 end
                 
                 if max(posterior) > threshold, lock_counter = lock_counter + 1; else, lock_counter = 0; end
@@ -203,9 +206,14 @@ while ~recog_locked
                     end_toc = toc;
                     elapsed_time = end_toc - start_recog;
                     recog_locked = true;
+                    % ⭐ 修正 4: 確定フレーム数は累積カウントを使用 ⭐
+                    total_recog_frame = frame_count
+                    %total_recog_frame = accumulated_frame_count - start_frame +1
+                    % 確定時点までの秒数を計算 (frame_shift_sec は 10ms)
+                    kimariji_second = 0.01 * (total_recog_frame - 1) + 0.03;
                     recog_fuda_index = max_idx;
                     recog_sequence_log = [recog_sequence_log, recog_fuda_index]; % ⭐ 追加: 確定した札インデックスを記録 ⭐
-                    recog_timestamp_log = [recog_timestamp_log; recog_fuda_index, elapsed_time];
+                    recog_timestamp_log = [recog_timestamp_log; recog_fuda_index, kimariji_second];
                     disp(['=== 🎯 決まり字確定！ 札: ', num2str(recog_fuda_index), ' 時間: ', num2str(elapsed_time), '秒 ===']);
                 end
             end
@@ -231,7 +239,6 @@ if recog_locked
         if ~exist(output_dir, 'dir'), mkdir(output_dir); end
         timestamp = datestr(now, 'yyyymmddHHMMSS');
         output_filename = fullfile(output_dir, [output_base_name '_idx' num2str(recog_fuda_index) '_' timestamp '.wav']);
-        
         audioToSave = fullAudioBuffer;
         if ~isempty(audioToSave)
             audioToSave = audioToSave / (max(abs(audioToSave)) + eps); % 正規化
@@ -296,21 +303,21 @@ else
 end
 
 
-try
+%try
     % 音声データのサンプリング周波数とデータ長を取得
-    TotalSamples = length(fullAudioBuffer);
-    TimeDuration = TotalSamples / Fs;
+    %TotalSamples = length(fullAudioBuffer);
+    %TimeDuration = TotalSamples / Fs_device;
     
     % 時間ベクトルを作成
-    time_vector = (0:TotalSamples-1) / Fs;
+    %time_vector = (0:TotalSamples-1) / Fs_device;
     
-    figure;
-    plot(time_vector, fullAudioBuffer);
-    title('全入力音声波形');
-    xlabel('時間 (秒)');
-    ylabel('振幅');
-    grid on;
-    disp(['プロットが完了しました。音声総時間: ', num2str(TimeDuration, '%.3f'), ' 秒']);
-catch ME_plot
-    disp(['波形プロット中にエラーが発生しました: ', ME_plot.message]);
-end
+    %figure;
+    %plot(time_vector, fullAudioBuffer);
+    %title('全入力音声波形');
+    %xlabel('時間 (秒)');
+    %ylabel('振幅');
+    %grid on;
+    %disp(['プロットが完了しました。音声総時間: ', num2str(TimeDuration, '%.3f'), ' 秒']);
+%catch ME_plot
+    %disp(['波形プロット中にエラーが発生しました: ', ME_plot.message]);
+%end
