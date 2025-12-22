@@ -25,7 +25,7 @@ input_gain = 2.0;  % 1.0 -> 10.0 に変更
 % ブースト後の音量に合わせて調整
 silenceThresh = 0.05; 
 
-output_dir = './kimariji_outputs';     
+output_dir = './kimariji_outputs_success';     
 output_base_name = 'recog_kimariji'; 
 
 % === HMM初期化 ===
@@ -41,12 +41,17 @@ posterior = zeros(num_fuda,1);
 %filt(1, :) = 1.0;
 % 状態1だけに100%振るのではなく、最初の方の状態（例えば状態1〜5）に少し余裕を持たせる
 filt = zeros(N, num_fuda);
-filt(1:N, :) = 1/N; % 最初の5状態のどこから始まっても良いとする
+filt(1:2, :) = 1/2; % 最初の5状態のどこから始まっても良いとする
      
 recog_locked = false;                 
 lock_counter = 0; 
 recog_fuda_index = 0; 
 mfcc_count=0;
+
+% ⭐ 追加 3: 認識された札の確定インデックスの記録用リスト ⭐
+recog_sequence_log = []; 
+recog_timestamp_log = [];
+overrun_log = {};
 
 % =========================================================
 % [モード] Windows ステレオミキサー入力増幅モード
@@ -87,7 +92,16 @@ end
 tic;
 while ~recog_locked
     % 1. 取得 & モノラル化
-    acquiredAudio = deviceReader();
+     [acquiredAudio, numOverrun] = deviceReader();
+    
+    if numOverrun > 0
+
+        fprintf('⚠️ 警告: フレーム %d (%.3f秒) で**オーバーラン**が発生しました。欠落サンプル数: %d\n', ...
+            accumulated_frame_count + 1, toc, numOverrun);
+        % 2. ここで overrun_log にデータを追加する
+        overrun_log{end+1} = [accumulated_frame_count + 1, toc, numOverrun];
+    end
+   
     if size(acquiredAudio, 2) > 1
         acquiredAudio = mean(acquiredAudio, 2);
     end
@@ -117,7 +131,7 @@ while ~recog_locked
     
     if length(ringBuffer) >= context_samples_model
         if rmsVal > silenceThresh
-            silence_counter = 0; is_active = true;
+            silence_counter = 0; is_active = true; start_recog = toc;
         else
             if started
                 silence_counter = silence_counter + 1;
@@ -127,10 +141,11 @@ while ~recog_locked
         end
         
         if is_active
+            
             if ~started
                 started = true;
                 disp('>>> 🎵 音声を検知！ 解析中... >>>');
-                fullAudioBuffer = []; 
+                 
                 fullAudioBuffer = [ringBuffer; acquiredAudio]; 
                 %before_ll = zeros(num_fuda, 1); before_filt = zeros(N, num_fuda);
                 lock_counter = 0;
@@ -185,9 +200,13 @@ while ~recog_locked
                 if max(posterior) > threshold, lock_counter = lock_counter + 1; else, lock_counter = 0; end
                 
                 if lock_counter >= consecutive_limit
+                    end_toc = toc;
+                    elapsed_time = end_toc - start_recog;
                     recog_locked = true;
                     recog_fuda_index = max_idx;
-                    disp(['=== 🎯 決まり字確定！ 札: ', num2str(recog_fuda_index), ' ===']);
+                    recog_sequence_log = [recog_sequence_log, recog_fuda_index]; % ⭐ 追加: 確定した札インデックスを記録 ⭐
+                    recog_timestamp_log = [recog_timestamp_log; recog_fuda_index, elapsed_time];
+                    disp(['=== 🎯 決まり字確定！ 札: ', num2str(recog_fuda_index), ' 時間: ', num2str(elapsed_time), '秒 ===']);
                 end
             end
         else
@@ -211,14 +230,87 @@ if recog_locked
     try
         if ~exist(output_dir, 'dir'), mkdir(output_dir); end
         timestamp = datestr(now, 'yyyymmddHHMMSS');
-        output_filename = fullfile(output_dir, ...
-            [output_base_name '_STEREOMIX_HighGain_idx' num2str(recog_fuda_index) '_' timestamp '.wav']);
+        output_filename = fullfile(output_dir, [output_base_name '_idx' num2str(recog_fuda_index) '_' timestamp '.wav']);
         
         audioToSave = fullAudioBuffer;
-        if max(abs(audioToSave)) > 0
-            audioToSave = audioToSave / max(abs(audioToSave));
+        if ~isempty(audioToSave)
+            audioToSave = audioToSave / (max(abs(audioToSave)) + eps); % 正規化
+            audiowrite(output_filename, audioToSave, Fs_model);
+            disp(['💾 保存完了: ', output_filename]);
         end
-        audiowrite(output_filename, audioToSave, Fs_model);
-        disp(['保存しました: ', output_filename]);
-    catch ME, disp(['保存エラー: ', ME.message]); end
+    catch ME, disp(['⚠️ 保存エラー: ', ME.message]); end
+end
+
+
+% ========================================
+% ⭐ 追加 5: 決まり字シーケンスの最終出力 ⭐
+% ========================================
+disp('---');
+disp('📜 **決まり字 最終認識シーケンス** 📜');
+if isempty(recog_sequence_log)
+    disp('認識された札はありませんでした。');
+else
+    % 記録されたインデックスの推移 (重複を含む)
+    fprintf('Raw Sequence (重複あり): %s\n', num2str(recog_sequence_log));
+
+    % 重複を排除し、推移の順序を保持 (MATLAB 2017a以降で利用可能)
+    unique_sequence = unique(recog_sequence_log, 'stable'); 
+    
+    % シーケンスを '→' でつなぐ文字列を作成
+    output_str = join(string(unique_sequence), ' → ');
+    
+    disp('**ユニークな決まり字の推移 (順番維持):**');
+    disp(output_str{1});
+
+    fprintf('%-10s | %-15s\n', '札番号', '確定時刻 (秒)');
+    disp('-----------|--------------------------------------');
+    for i = 1:size(recog_timestamp_log, 1)
+        fuda_idx = recog_timestamp_log(i, 1);
+        fuda_time = recog_timestamp_log(i, 2);
+        fprintf('札 %-7d | %-15.3f\n', fuda_idx, fuda_time);
+    end
+end
+
+
+
+% ========================================
+% ⭐ 追加 2: オーバーラン情報の最終出力 ⭐
+% ========================================
+disp('---');
+if isempty(overrun_log)
+    disp('✅ 最終結果: 処理時間中に**オーバーランは一度も発生しませんでした**。');
+else
+    disp('🚨🚨🚨 最終結果: 処理時間中に**オーバーランが発生した全フレーム** 🚨🚨🚨');
+    disp('------------------------------------------------------------------');
+    fprintf('%-10s | %-12s | %s\n', 'フレーム #', '時刻 (秒)', '欠落サンプル数');
+    disp('------------------------------------------------------------------');
+    
+    % セル配列の内容を整形して表示
+    for i = 1:length(overrun_log)
+        frame_num = overrun_log{i}(1);
+        time_sec = overrun_log{i}(2);
+        dropped_samples = overrun_log{i}(3);
+        fprintf('%-10d | %-12.3f | %d\n', frame_num, time_sec, dropped_samples);
+    end
+    disp('------------------------------------------------------------------');
+end
+
+
+try
+    % 音声データのサンプリング周波数とデータ長を取得
+    TotalSamples = length(fullAudioBuffer);
+    TimeDuration = TotalSamples / Fs;
+    
+    % 時間ベクトルを作成
+    time_vector = (0:TotalSamples-1) / Fs;
+    
+    figure;
+    plot(time_vector, fullAudioBuffer);
+    title('全入力音声波形');
+    xlabel('時間 (秒)');
+    ylabel('振幅');
+    grid on;
+    disp(['プロットが完了しました。音声総時間: ', num2str(TimeDuration, '%.3f'), ' 秒']);
+catch ME_plot
+    disp(['波形プロット中にエラーが発生しました: ', ME_plot.message]);
 end

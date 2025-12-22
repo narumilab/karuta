@@ -25,7 +25,7 @@ ll = zeros(num_fuda, 1);       % 累積尤度 (K x 1)
 posterior = zeros(num_fuda,1);
 filt = zeros(N, num_fuda); 
 %filt(1, :) = 1.0;
-filt(1:N, :) = 1/N;
+filt(1:2, :) = 1/2;
 accumulated_frame_count = 0;% 累積フレーム数
 frame_count = 0;          
 accumulated_frame = 0; 
@@ -102,10 +102,7 @@ started = false;
 audio_started = false;
 %silenceThresh = 0.0007; 
 %silenceThresh = 0.0001470000014;
-%silenceThresh = -9.5; 
-%silenceThresh = 0.01;
-%silenceThresh = 0.0001;
-%silenceThresh = 0.005; 
+%silenceThresh = -9.5;  
 %silenceThresh = y_play(1)
 %silenceThresh = 0.02; 
 
@@ -141,31 +138,41 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
         audioRecorded = mean(audioRecorded, 2);
     end
     
+    % ⭐ 変更：バッファは「常に」更新し続ける (started の判定前に行う)
+    ringBuffer = [ringBuffer; audioRecorded];
+    if length(ringBuffer) > frameLen
+        ringBuffer(1 : length(ringBuffer)-frameLen) = [];
+    end
+
     % --- 無音検出 ---
     rmsVal = sqrt(mean(audioRecorded.^2));
-    %rmsVal = max(abs(audioRecorded));
     if ~started
         if rmsVal > silenceThresh
             started = true;
-            disp("Sound detected! Starting MFCC processing...");
+            disp("🎵 Sound detected! Analyzing with pre-roll buffer...");
         else
-            continue; % 無音なのでスキップ
+            % started でない間は、フルバッファへの追加や解析はスキップ
+            continue; 
         end
     end
-   
     
-  
-     
+
     
     
-    accumulated_frame_count = accumulated_frame_count + 1;
+ 
     
 
     if started
-        ringBuffer = [ringBuffer; audioRecorded];
+        accumulated_frame_count = accumulated_frame_count + 1;
         fullAudioBuffer = [fullAudioBuffer; audioRecorded];
         frame_count = frame_count + 1;
-        start_recog =toc;
+        start_recog = toc;
+       
+        if length(ringBuffer) > frameLen
+            ringBuffer(1 : length(ringBuffer)-frameLen) = [];
+        end
+        frame_count = frame_count + 1;
+        
             
             
         if length(ringBuffer) >= frameLen;
@@ -223,6 +230,7 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
 
                 if lock_counter >= 3 % consecutive_limit は 3 に設定
                     recog_locked = true;
+                    end_recog = toc;
     % ここで初めて「確定」とみなし、出力を表示
                 
                     [~,recog_fuda] = max(posterior);
@@ -232,10 +240,16 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
                    
                 % ⭐⭐⭐ 最新の事後確率を表示 ⭐⭐⭐
                 disp('--- 最新の札別 潜在確率 (Posterior) ---');
-                for k = 1:num_fuda
-        %            fprintf('  札 %d: %.6f\n', k, posterior_result(k, end) * 100); 
-                    fprintf('  札 %d: %.6f\n', k, posterior(k) * 100); 
+                if max(posterior) > 0.1
+                    stars = repmat('★', 1, lock_counter);
+                    max_p = max(posterior);
+                    [max_val, max_idx] = max(posterior);
+                    fprintf('  候補: 札%d (%.1f%%) %s\n', max_idx, max_p*100, stars);
                 end
+                %for k = 1:num_fuda
+        %            fprintf('  札 %d: %.6f\n', k, posterior_result(k, end) * 100); 
+                    %fprintf('  札 %d: %.6f\n', k, posterior(k) * 100); 
+                %end
             end
             % ⭐ 変更 3: 状態変数を更新し、次のステップへ引き継ぐ (リセットはしない) ⭐
             %before_ll = current_ll_matrix(:, end) ;
@@ -249,7 +263,7 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
             % ⭐⭐⭐ 決まり字確定時の音声ファイル保存ロジック ⭐⭐⭐
             % 変更 4: recog_locked フラグでファイル保存を一度だけ行う制御に変更
             if recog_fuda ~= fuda 
-                end_recog = toc;
+                
                 total_sec = end_recog - start_recog; 
                 fprintf("決まり字が確定しました！ %.3f sec. Total frames: %d\n", total_sec, frame_count);
                 fuda = recog_fuda;
@@ -318,9 +332,7 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
                 %shift_error = shift_error + 1;
 
             %end
-            if length(ringBuffer) > frameLen
-                ringBuffer(1:length(ringBuffer)-frameLen) = [];
-            end
+            
         end
     end
 end
