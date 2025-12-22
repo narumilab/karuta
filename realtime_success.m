@@ -14,7 +14,7 @@ Fs_model  = 44100; % モデルの形式
 l = 0.01; 
 threshold = 0.9999;
 w = 0.1;
-context_duration = 0.3; 
+context_duration = 0.19; 
 consecutive_limit = 3; 
 
 % ★★★ 修正1: デジタル増幅（ブースト） ★★★
@@ -41,7 +41,7 @@ posterior = zeros(num_fuda,1);
 %filt(1, :) = 1.0;
 % 状態1だけに100%振るのではなく、最初の方の状態（例えば状態1〜5）に少し余裕を持たせる
 filt = zeros(N, num_fuda);
-filt(1:2, :) = 1/2; % 最初の5状態のどこから始まっても良いとする
+filt(1:N, :) = 1/N; % 最初の5状態のどこから始まっても良いとする
      
 recog_locked = false;                 
 lock_counter = 0; 
@@ -132,7 +132,7 @@ while ~recog_locked
                 disp('>>> 🎵 音声を検知！ 解析中... >>>');
                 fullAudioBuffer = []; 
                 fullAudioBuffer = [ringBuffer; acquiredAudio]; 
-                before_ll = zeros(num_fuda, 1); before_filt = zeros(N, num_fuda);
+                %before_ll = zeros(num_fuda, 1); before_filt = zeros(N, num_fuda);
                 lock_counter = 0;
             else
                 fullAudioBuffer = [fullAudioBuffer; acquiredAudio];

@@ -25,7 +25,7 @@ ll = zeros(num_fuda, 1);       % 累積尤度 (K x 1)
 posterior = zeros(num_fuda,1);
 filt = zeros(N, num_fuda); 
 %filt(1, :) = 1.0;
-filt(1:5, :) = 1/5;
+filt(1:N, :) = 1/N;
 accumulated_frame_count = 0;% 累積フレーム数
 frame_count = 0;          
 accumulated_frame = 0; 
@@ -38,6 +38,7 @@ recog_fuda = 0;
 fuda = 0;
 % ⭐ 追加 3: 認識された札の確定インデックスの記録用リスト ⭐
 recog_sequence_log = []; 
+recog_timestamp_log = [];  % 確定時刻を記録するリスト
 
 shift_fix = 0;
 shift_error = 0;
@@ -109,7 +110,7 @@ audio_started = false;
 %silenceThresh = 0.02; 
 
 input_gain = 2.0;       % 2.0倍に増幅（必要に応じて 5.0 や 10.0 に調整）
-silenceThresh = 0.01;   % 増幅後の音量に合わせた無音閾値（コード2の設定を参考）
+silenceThresh = 0.05;   % 増幅後の音量に合わせた無音閾値（コード2の設定を参考）
 
 power_over=0;
 power=[];
@@ -118,6 +119,7 @@ power=[];
 % ⭐ 追加 1: オーバーラン情報を記録するリストを初期化 ⭐
 % [フレーム番号, 時刻 (s), 欠落サンプル数] を格納
 overrun_log = {};
+
 lock_counter = 0;
 mfcc_count=0;
 
@@ -174,57 +176,23 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
             c=length(frame);
             [coeffs, delta, deltaDelta] = mfcc(frame, Fs);
             mfcc_matrix_current = [coeffs, delta, deltaDelta];
-            %current_mfcc_c0 = mfcc_matrix_current(1, 1);
-            %current_power = sum(ringBuffer.^2) / length(ringBuffer);
-            %current_power = max(abs(ringBuffer(1:bufLen)));
-            current_power = rms(ringBuffer(1:bufLen));
-            full_current_power =[full_current_power current_power];
-            
-            %if ~started
-                % ⭐ 無音閾値チェック ⭐
-                %if current_mfcc_c0 > silenceThresh
-                %if current_power > silenceThresh
-                    
-                    %started = true;
-                    %start_recog =toc;
-                    %disp("Sound detected! Starting HMM recognition...");
-                    
-                %end 
-            %end
-            
         
-
-        
-        % ⭐⭐⭐ 修正 3: HMM認識の実行条件を started == true に変更 ⭐⭐⭐
-        
-            
-            
             % ファイル保存のため累積
-            %power = [power current_power];
+            
             latest_index = size(mfcc_matrix_current, 1);
-            if mfcc_count==0
-                mfcc_count = mfcc_count + 1; % Increment the MFCC count
-                mfcc_matrix_current_block = mfcc_matrix_current(1:latest_index,:);
-            else
-            mfcc_count = mfcc_count + 1;
+            %if mfcc_count==0
+                %mfcc_count = mfcc_count + 1; % Increment the MFCC count
+                %mfcc_matrix_current_block = mfcc_matrix_current(1:latest_index,:);
+            %else
+            %mfcc_count = mfcc_count + 1;
+            %mfcc_matrix_current_block = mfcc_matrix_current(latest_index,:);
+            %end
             mfcc_matrix_current_block = mfcc_matrix_current(latest_index,:);
-            end
             fullmfcc = [fullmfcc;mfcc_matrix_current_block];
             % ⭐ 修正 1: HMMには最新の1フレームのみを渡す (次元数 x 1 に転置)
             mfcc_data = mfcc_matrix_current_block'; 
             
-            % 累積フレーム数をカウント
-            
-            
-            %fprintf("MFCC computed at %.3f sec. Total frames: %d\n", toc, frame_count);
-           
-            
-            %if length(ringBuffer) < g-(Fs*0.01)
-                %disp('欠落しました');
-                %shift_error = shift_error + 1;
-
-            %end
-          
+         
             % --- HMM認識処理 ---
             disp('--- 2. HMM認識の実行 ---');
     
@@ -288,12 +256,21 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
                 % ⭐ 追加 4: 確定した札のインデックスを記録 ⭐
                 recog_sequence_log = [recog_sequence_log, recog_fuda];
                 disp('*** 決まり字が確定しました！確定区間の音声をファイル保存します (状態は継続) ***');
-                
+                % --- 修正箇所：if recog_fuda ~= fuda のブロック内 ---
+
+    
+    
+    
+
+
                 % ⭐ 修正 4: 確定フレーム数は累積カウントを使用 ⭐
                 total_recog_frame = frame_count;
                 
                 % 確定時点までの秒数を計算 (frame_shift_sec は 10ms)
                 kimariji_second = frame_shift_sec * (total_recog_frame - 1) + n; 
+
+                % ⭐ 追加：時刻と札番号をペアで記録
+                recog_timestamp_log = [recog_timestamp_log; recog_fuda, kimariji_second];
                 
                 % 全体の音声バッファから、その秒数に対応するサンプル数を切り出す
                 kimariji_samples = ceil(kimariji_second * Fs);
@@ -328,18 +305,21 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
             
             % ⭐ 追加: ファイル保存後も、HMMの状態は before_ll と before_filt を介して次のループに引き継がれる
         
-            ringBuffer(1:shift) = []; % シフト量 (20ms) 分をのこす
-            b = length(ringBuffer);
-            if length(ringBuffer) > g-(Fs*0.01)
-                shift_fix = shift_fix + 1;
-                shift_change = shift-(g-b);
-                ringBuffer = ringBuffer(shift_change + 1 : end);
+            %ringBuffer(1:shift) = []; % シフト量 (20ms) 分をのこす
+            %b = length(ringBuffer);
+            %if length(ringBuffer) > g-(Fs*0.01)
+                %shift_fix = shift_fix + 1;
+                %shift_change = shift-(g-b);
+                %ringBuffer = ringBuffer(shift_change + 1 : end);
                 
-            end
-            if length(ringBuffer) < g-(Fs*0.01)
-                disp('欠落しました');
-                shift_error = shift_error + 1;
+            %end
+            %if length(ringBuffer) < g-(Fs*0.01)
+                %disp('欠落しました');
+                %shift_error = shift_error + 1;
 
+            %end
+            if length(ringBuffer) > frameLen
+                ringBuffer(1:length(ringBuffer)-frameLen) = [];
             end
         end
     end
@@ -367,7 +347,16 @@ else
     
     disp('**ユニークな決まり字の推移 (順番維持):**');
     disp(output_str{1});
+
+    fprintf('%-10s | %-15s\n', '札番号', '確定時刻 (秒)');
+    disp('-----------|--------------------------------------');
+    for i = 1:size(recog_timestamp_log, 1)
+        fuda_idx = recog_timestamp_log(i, 1);
+        fuda_time = recog_timestamp_log(i, 2);
+        fprintf('札 %-7d | %-15.3f\n', fuda_idx, fuda_time);
+    end
 end
+
 
 fprintf('バッファサイズを　%d 回調節しました。\n', shift_fix);
 
