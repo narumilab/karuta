@@ -113,7 +113,7 @@ power=[];
 % ⭐ 追加 1: オーバーラン情報を記録するリストを初期化 ⭐
 % [フレーム番号, 時刻 (s), 欠落サンプル数] を格納
 overrun_log = {};
-
+lock_counter = 0;
 mfcc_count=0;
 
 tic
@@ -204,8 +204,8 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
                 %mfcc_count = mfcc_count + 1; % Increment the MFCC count
                 %mfcc_matrix_current_block = mfcc_matrix_current(1:17,:);
             %else
-                mfcc_count = mfcc_count + 1;
-                mfcc_matrix_current_block = mfcc_matrix_current(17,:);
+            mfcc_count = mfcc_count + 1;
+            mfcc_matrix_current_block = mfcc_matrix_current(17,:);
             %end
             fullmfcc = [fullmfcc;mfcc_matrix_current_block];
             % ⭐ 修正 1: HMMには最新の1フレームのみを渡す (次元数 x 1 に転置)
@@ -246,6 +246,15 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
                 
                 if max(posterior) > threshold
                     %recog_time = t;
+                    lock_counter = lock_counter + 1; 
+                else, 
+                    lock_counter = 0; 
+                end
+
+                if lock_counter >= 3 % consecutive_limit は 3 に設定
+                    recog_locked = true;
+    % ここで初めて「確定」とみなし、出力を表示
+                
                     [~,recog_fuda] = max(posterior);
                     break
                 end
