@@ -99,10 +99,10 @@ full_current_power =[];
 started = false;
 audio_started = false;
 %silenceThresh = 0.0007; 
-%silenceThresh = 0.0001470000014;
+silenceThresh = 0.0001470000014;
 %silenceThresh = -9.5; 
 %silenceThresh = 0.01;
-silenceThresh = 0.0001;
+%silenceThresh = 0.0001;
 %silenceThresh = 0.005; 
 %silenceThresh = y_play(1)
 
@@ -175,18 +175,7 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
         end
         
        
-        b = length(ringBuffer);
-        if length(ringBuffer) > g-(Fs*0.01)
-            shift_fix = shift_fix + 1;
-            shift_change = shift-(g-b);
-            ringBuffer = ringBuffer(shift_change + 1 : end);
-            
-        end
-        if length(ringBuffer) < g-(Fs*0.01)
-            disp('欠落しました');
-            shift_error = shift_error + 1;
 
-        end
         
         % ⭐⭐⭐ 修正 3: HMM認識の実行条件を started == true に変更 ⭐⭐⭐
         if started
@@ -200,13 +189,13 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
             end
             % ファイル保存のため累積
             power = [power current_power];
-            %if mfcc_count==0
-                %mfcc_count = mfcc_count + 1; % Increment the MFCC count
-                %mfcc_matrix_current_block = mfcc_matrix_current(1:17,:);
-            %else
+            if mfcc_count==0
+                mfcc_count = mfcc_count + 1; % Increment the MFCC count
+                mfcc_matrix_current_block = mfcc_matrix_current(1:17,:);
+            else
             mfcc_count = mfcc_count + 1;
             mfcc_matrix_current_block = mfcc_matrix_current(17,:);
-            %end
+            end
             fullmfcc = [fullmfcc;mfcc_matrix_current_block];
             % ⭐ 修正 1: HMMには最新の1フレームのみを渡す (次元数 x 1 に転置)
             mfcc_data = mfcc_matrix_current_block'; 
@@ -327,6 +316,18 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
             % ⭐ 追加: ファイル保存後も、HMMの状態は before_ll と before_filt を介して次のループに引き継がれる
         end
         ringBuffer(1:shift) = []; % シフト量 (20ms) 分をのこす
+                b = length(ringBuffer);
+        if length(ringBuffer) > g-(Fs*0.01)
+            shift_fix = shift_fix + 1;
+            shift_change = shift-(g-b);
+            ringBuffer = ringBuffer(shift_change + 1 : end);
+            
+        end
+        if length(ringBuffer) < g-(Fs*0.01)
+            disp('欠落しました');
+            shift_error = shift_error + 1;
+
+        end
     end
 end
 release(deviceReader);
