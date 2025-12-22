@@ -184,7 +184,7 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
                 l = 0;
                 pred = filt(:,k)'*a_i_j_m(:,:,k);
                 for i=2:N-1 
-                    emission_prob = exp(logDiagGaussian(mfcc_data(1:14,s),mean_vec_i_m(1:14,i,k),var_vec_i_m(1:14,i,k)));
+                    emission_prob = exp(logDiagGaussian(mfcc_data(:,s),mean_vec_i_m(:,i,k),var_vec_i_m(:,i,k)));
                     l = l + pred(i) * emission_prob;
                     filt(i,k) = pred(i) * emission_prob;
                 end
@@ -323,10 +323,10 @@ else
 end
 
 
-%try
+try
     % 音声データのサンプリング周波数とデータ長を取得
-    %TotalSamples = length(fullAudioBuffer);
-    %TimeDuration = TotalSamples / Fs;
+    TotalSamples = length(fullAudioBuffer);
+    TimeDuration = TotalSamples / Fs;
     
     % 時間ベクトルを作成
     time_vector = (0:TotalSamples-1) / Fs;

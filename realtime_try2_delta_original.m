@@ -105,6 +105,7 @@ audio_started = false;
 %silenceThresh = 0.0001;
 %silenceThresh = 0.005; 
 %silenceThresh = y_play(1)
+silenceThresh = 0; 
 
 input_gain = 2.0;       % 2.0倍に増幅（必要に応じて 5.0 や 10.0 に調整）
 silenceThresh = 0.05;   % 増幅後の音量に合わせた無音閾値（コード2の設定を参考）
@@ -138,16 +139,16 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
     end
     
     % --- 無音検出 ---
-    %rmsVal = sqrt(mean(audioRecorded.^2));
+    rmsVal = sqrt(mean(audioRecorded.^2));
     %rmsVal = max(abs(audioRecorded));
-    %if ~started
-        %if rmsVal > silenceThresh
-            %started = true;
-            %disp("Sound detected! Starting MFCC processing...");
-        %else
-            %continue; % 無音なのでスキップ
-        %end
-    %end
+    if ~started
+        if rmsVal > silenceThresh
+            started = true;
+            disp("Sound detected! Starting MFCC processing...");
+        else
+            continue; % 無音なのでスキップ
+        end
+    end
    
     
   
@@ -170,17 +171,17 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
         current_power = rms(ringBuffer(1:bufLen));
         full_current_power =[full_current_power current_power];
         
-        if ~started
+        %if ~started
             % ⭐ 無音閾値チェック ⭐
             %if current_mfcc_c0 > silenceThresh
-            if current_power > silenceThresh
+            %if current_power > silenceThresh
                 
-                started = true;
-                start_recog =toc;
-                disp("Sound detected! Starting HMM recognition...");
+                %started = true;
+                %start_recog =toc;
+                %disp("Sound detected! Starting HMM recognition...");
                 
-            end 
-        end
+            %end 
+        %end
         
        
 
@@ -196,13 +197,14 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
                 fullAudioBuffer = [fullAudioBuffer; audioRecorded];
             end
             % ファイル保存のため累積
-            power = [power current_power];
+            %power = [power current_power];
+            latest_index = size(mfcc_matrix_current, 1);
             if mfcc_count==0
                 mfcc_count = mfcc_count + 1; % Increment the MFCC count
-                mfcc_matrix_current_block = mfcc_matrix_current(17,:);
+                mfcc_matrix_current_block = mfcc_matrix_current(1:latest_index,:);
             else
             mfcc_count = mfcc_count + 1;
-            mfcc_matrix_current_block = mfcc_matrix_current(17,:);
+            mfcc_matrix_current_block = mfcc_matrix_current(latest_index,:);
             end
             fullmfcc = [fullmfcc;mfcc_matrix_current_block];
             % ⭐ 修正 1: HMMには最新の1フレームのみを渡す (次元数 x 1 に転置)
@@ -214,11 +216,11 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
             %fprintf("MFCC computed at %.3f sec. Total frames: %d\n", toc, frame_count);
            
             
-            if length(ringBuffer) < g-(Fs*0.01)
-                disp('欠落しました');
-                shift_error = shift_error + 1;
+            %if length(ringBuffer) < g-(Fs*0.01)
+                %disp('欠落しました');
+                %shift_error = shift_error + 1;
 
-            end
+            %end
           
             % --- HMM認識処理 ---
             disp('--- 2. HMM認識の実行 ---');
@@ -231,7 +233,7 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
                     l = 0;
                     pred = filt(:,k)'*a_i_j_m(:,:,k);
                     for i=2:N-1 
-                        emission_prob = exp(logDiagGaussian(mfcc_data(1:14,s),mean_vec_i_m(1:14,i,k),var_vec_i_m(1:14,i,k)));
+                        emission_prob = exp(logDiagGaussian(mfcc_data(:,s),mean_vec_i_m(:,i,k),var_vec_i_m(:,i,k)));
                         l = l + pred(i) * emission_prob;
                         filt(i,k) = pred(i) * emission_prob;
                     end
@@ -248,13 +250,13 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
                     lock_counter = 0; 
                 end
 
-                if lock_counter >= 3 % consecutive_limit は 3 に設定
-                    recog_locked = true;
+                %if lock_counter >= 3 % consecutive_limit は 3 に設定
+                    %recog_locked = true;
     % ここで初めて「確定」とみなし、出力を表示
                 
-                    [~,recog_fuda] = max(posterior);
-                    break
-                end
+                    %[~,recog_fuda] = max(posterior);
+                    %break
+                %end
                   
                    
                 % ⭐⭐⭐ 最新の事後確率を表示 ⭐⭐⭐
@@ -324,7 +326,7 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
             % ⭐ 追加: ファイル保存後も、HMMの状態は before_ll と before_filt を介して次のループに引き継がれる
         end
         ringBuffer(1:shift) = []; % シフト量 (20ms) 分をのこす
-                b = length(ringBuffer);
+        b = length(ringBuffer);
         if length(ringBuffer) > g-(Fs*0.01)
             shift_fix = shift_fix + 1;
             shift_change = shift-(g-b);

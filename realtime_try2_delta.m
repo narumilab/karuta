@@ -48,7 +48,7 @@ recog_locked = false; % ファイル保存の重複防止用として維持
 
 % === 変数の計算 ===
 x=1;
-frameLen = round(n * x * Fs);       % 30 ms 
+frameLen = round(0.19 * Fs);       % 30 ms 
 shift_check = round(m * Fs);
 frame_shift_sec = n - m;        % 10 ms 
 shift    = round(frame_shift_sec * Fs); % 10 ms 
@@ -105,13 +105,13 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
         a=length(ringBuffer);
         c=length(frame);
         %mfccの計算
-        [coeffs] = mfcc(frame, Fs);
-        mfcc_current = coeffs;
-        delta = mfcc_current-mfcc_before;
-        deltaDelta = delta - delta_before;
+        [coeffs, delta, deltaDelta] = mfcc(frame, Fs);
+        %mfcc_current = coeffs;
+        %delta = mfcc_current-mfcc_before;
+        %deltaDelta = delta - delta_before;
         mfcc_matrix_current_block = [coeffs, delta, deltaDelta];
-        mfcc_before = mfcc_current;
-        delta_before = delta; 
+        mfcc_before = mfcc_matrix_current_block(17,:);
+        %delta_before = delta; 
         fullmfcc = [fullmfcc;mfcc_matrix_current_block];
 
         % ⭐ 修正 1: HMMには最新の1フレームのみを渡す (次元数 x 1 に転置)
