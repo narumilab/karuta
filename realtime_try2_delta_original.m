@@ -99,12 +99,15 @@ full_current_power =[];
 started = false;
 audio_started = false;
 %silenceThresh = 0.0007; 
-silenceThresh = 0.0001470000014;
+%silenceThresh = 0.0001470000014;
 %silenceThresh = -9.5; 
 %silenceThresh = 0.01;
 %silenceThresh = 0.0001;
 %silenceThresh = 0.005; 
 %silenceThresh = y_play(1)
+
+input_gain = 2.0;       % 2.0倍に増幅（必要に応じて 5.0 や 10.0 に調整）
+silenceThresh = 0.05;   % 増幅後の音量に合わせた無音閾値（コード2の設定を参考）
 
 power_over=0;
 power=[];
@@ -120,6 +123,7 @@ tic
 while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
  
     [audioRecorded, numOverrun] = deviceReader(); % 音声を取得 (10ms分)
+    audioRecorded = audioRecorded * input_gain;
     if numOverrun > 0
 
         fprintf('⚠️ 警告: フレーム %d (%.3f秒) で**オーバーラン**が発生しました。欠落サンプル数: %d\n', ...
@@ -128,6 +132,10 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
         overrun_log{end+1} = [accumulated_frame_count + 1, toc, numOverrun];
     end
     
+    % --- モノラル化の追加（もし入力がステレオの場合の安全策） ---
+    if size(audioRecorded, 2) > 1
+        audioRecorded = mean(audioRecorded, 2);
+    end
     
     % --- 無音検出 ---
     %rmsVal = sqrt(mean(audioRecorded.^2));
@@ -191,7 +199,7 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
             power = [power current_power];
             if mfcc_count==0
                 mfcc_count = mfcc_count + 1; % Increment the MFCC count
-                mfcc_matrix_current_block = mfcc_matrix_current(1:17,:);
+                mfcc_matrix_current_block = mfcc_matrix_current(17,:);
             else
             mfcc_count = mfcc_count + 1;
             mfcc_matrix_current_block = mfcc_matrix_current(17,:);
