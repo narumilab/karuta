@@ -1,0 +1,224 @@
+clear;
+addpath('Lee_HMM'); 
+
+% === ユーザー設定 ===
+model_file = 'models_state30/iter10.mat'; 
+input_wav_path = './aihara_test/ooke/ooke1.wav'; 
+
+run_mode = 'online'; 
+
+% レート設定
+Fs_device = 44100; % ステレオミキサーからの入力
+Fs_model  = 44100; % モデルの形式
+
+l = 0.01; 
+threshold = 0.9999;
+w = 0.1;
+context_duration = 0.3; 
+consecutive_limit = 3; 
+
+% ★★★ 修正1: デジタル増幅（ブースト） ★★★
+% 音が小さい場合、ここで無理やり大きくします
+input_gain = 2.0;  % 1.0 -> 10.0 に変更
+
+% ★★★ 修正2: 閾値の調整 ★★★
+% ブースト後の音量に合わせて調整
+silenceThresh = 0.05; 
+
+output_dir = './kimariji_outputs';     
+output_base_name = 'recog_kimariji'; 
+
+% === HMM初期化 ===
+     
+load(model_file, 'mean_vec_i_m', 'var_vec_i_m', 'a_i_j_m');
+model_dim = size(mean_vec_i_m, 1); 
+num_fuda = size(mean_vec_i_m, 3); % 札数 (K)
+N = size(mean_vec_i_m, 2);      % 状態数 (N)
+% ⭐ HMMの状態管理変数を初期化 ⭐
+ll = zeros(num_fuda, 1);       % 累積尤度 (K x 1)
+posterior = zeros(num_fuda,1);
+%filt = zeros(N, num_fuda); 
+%filt(1, :) = 1.0;
+% 状態1だけに100%振るのではなく、最初の方の状態（例えば状態1〜5）に少し余裕を持たせる
+filt = zeros(N, num_fuda);
+filt(1:2, :) = 1/2; % 最初の5状態のどこから始まっても良いとする
+     
+recog_locked = false;                 
+lock_counter = 0; 
+recog_fuda_index = 0; 
+mfcc_count=0;
+
+% =========================================================
+% [モード] Windows ステレオミキサー入力増幅モード
+% =========================================================
+disp('==================================================');
+disp('   🎧 Windows Stereo Mix Input (High Gain Mode)   ');
+disp('==================================================');
+disp('準備完了。音声を再生してください。');
+disp('--------------------------------------------------');
+
+context_samples_model = round(context_duration * Fs_model); 
+
+try
+    deviceReader = audioDeviceReader(...
+        'Device', 'ステレオ ミキサー (Realtek(R) Audio)', ... 
+        'SampleRate', Fs_device, ...
+        'SamplesPerFrame', round(l * Fs_device)); 
+    disp(['✅ ステレオ ミキサーに接続 (Gain: x' num2str(input_gain) ')']);
+catch
+    disp('⚠️ ステレオミキサー接続エラー。デバイスリスト:');
+    audioDeviceReader.getAudioDevices();
+    return;
+end
+
+ringBuffer = [];      
+fullAudioBuffer = []; 
+started = false;      
+silence_counter = 0;
+lock_counter = 0; 
+
+% リサンプラー（Fs_device と Fs_model が異なる場合のみ使用）
+if Fs_device ~= Fs_model
+    src = dsp.SampleRateConverter('InputSampleRate', Fs_device, 'OutputSampleRate', Fs_model);
+else
+    src = []; % リサンプリング不要
+end
+
+tic;
+while ~recog_locked
+    % 1. 取得 & モノラル化
+    acquiredAudio = deviceReader();
+    if size(acquiredAudio, 2) > 1
+        acquiredAudio = mean(acquiredAudio, 2);
+    end
+    
+    % 2. リサンプリング（必要な場合のみ）
+    if ~isempty(src)
+        acquiredAudio = src(acquiredAudio);
+    end
+    
+    % 3. ★強制増幅★
+    acquiredAudio = acquiredAudio * input_gain;
+    
+    % --- 音量デバッグ表示 (重要) ---
+    % 現在、MATLABがどれくらいの音量を受け取っているかを表示
+    vol = max(abs(acquiredAudio));
+    if vol > 0.01 && ~started
+        fprintf('現在の入力レベル: %.4f (目標: 0.1以上)\n', vol);
+    end
+    % ---------------------------
+
+    ringBuffer = [ringBuffer; acquiredAudio];
+    if length(ringBuffer) > context_samples_model
+        ringBuffer(1:length(ringBuffer)-context_samples_model) = [];
+    end
+    
+    rmsVal = sqrt(mean(acquiredAudio.^2));
+    
+    if length(ringBuffer) >= context_samples_model
+        if rmsVal > silenceThresh
+            silence_counter = 0; is_active = true;
+        else
+            if started
+                silence_counter = silence_counter + 1;
+                % ★修正3: 音切れ防止のため、無音許容時間を少し伸ばす
+                if silence_counter <= 50, is_active = true; else, is_active = false; end
+            else, is_active = false; end
+        end
+        
+        if is_active
+            if ~started
+                started = true;
+                disp('>>> 🎵 音声を検知！ 解析中... >>>');
+                fullAudioBuffer = []; 
+                fullAudioBuffer = [ringBuffer; acquiredAudio]; 
+                before_ll = zeros(num_fuda, 1); before_filt = zeros(N, num_fuda);
+                lock_counter = 0;
+            else
+                fullAudioBuffer = [fullAudioBuffer; acquiredAudio];
+            end
+            
+
+            [coeffs, delta, deltaDelta] = mfcc(ringBuffer, Fs_model);
+            mfcc_block = [coeffs, delta, deltaDelta];
+            if size(mfcc_block, 2) > model_dim, mfcc_block = mfcc_block(:, 1:model_dim);
+            elseif size(mfcc_block, 2) < model_dim, mfcc_block(:, end+1:model_dim) = 0; end
+            
+            latest_idx = size(mfcc_block, 1);
+            %if mfcc_count==0
+                %mfcc_count = mfcc_count + 1; % Increment the MFCC count
+                %mfcc_matrix_current_block = mfcc_block(latest_idx,:);
+            %else
+                %mfcc_count = mfcc_count + 1;
+                %mfcc_matrix_current_block = mfcc_block(latest_idx,:);
+            %end 
+            mfcc_matrix_current_block = mfcc_block(latest_idx,:);
+            mfcc_data = mfcc_matrix_current_block'; 
+            disp('--- 2. HMM認識の実行 ---');
+    
+            p=size(mfcc_data,2);
+            for s=1:size(mfcc_data,2);
+                
+                for k=1:num_fuda;
+                   
+                    l = 0;
+                    pred = filt(:,k)'*a_i_j_m(:,:,k);
+                    for i=2:N-1 
+                        emission_prob = exp(logDiagGaussian(mfcc_data(:,s),mean_vec_i_m(:,i,k),var_vec_i_m(:,i,k)));
+                        l = l + pred(i) * emission_prob;
+                        filt(i,k) = pred(i) * emission_prob;
+                    end
+                    ll(k) = ll(k)+log(l);
+                    filt(:,k) = filt(:,k)/sum(filt(:,k));
+                end
+                posterior = exp(w*(ll-max(ll)));
+                posterior = posterior/sum(posterior);
+                
+            
+                if max(posterior) > 0.1
+                    stars = repmat('★', 1, lock_counter);
+                    max_p = max(posterior);
+                    [max_val, max_idx] = max(posterior);
+                    fprintf('  候補: 札%d (%.1f%%) %s\n', max_idx, max_p*100, stars);
+                end
+                
+                if max(posterior) > threshold, lock_counter = lock_counter + 1; else, lock_counter = 0; end
+                
+                if lock_counter >= consecutive_limit
+                    recog_locked = true;
+                    recog_fuda_index = max_idx;
+                    disp(['=== 🎯 決まり字確定！ 札: ', num2str(recog_fuda_index), ' ===']);
+                end
+            end
+        else
+            if started
+                disp('<<< リセット (音が途切れました) <<<');
+                started = false; silence_counter = 0; lock_counter = 0;
+                before_ll = zeros(num_fuda, 1); before_filt = zeros(N, num_fuda);
+            end
+        end
+    end
+    
+    if toc > 60, disp('タイムアウト'); break; end
+end
+
+release(deviceReader);
+if ~isempty(src)
+    release(src);
+end
+
+if recog_locked
+    try
+        if ~exist(output_dir, 'dir'), mkdir(output_dir); end
+        timestamp = datestr(now, 'yyyymmddHHMMSS');
+        output_filename = fullfile(output_dir, ...
+            [output_base_name '_STEREOMIX_HighGain_idx' num2str(recog_fuda_index) '_' timestamp '.wav']);
+        
+        audioToSave = fullAudioBuffer;
+        if max(abs(audioToSave)) > 0
+            audioToSave = audioToSave / max(abs(audioToSave));
+        end
+        audiowrite(output_filename, audioToSave, Fs_model);
+        disp(['保存しました: ', output_filename]);
+    catch ME, disp(['保存エラー: ', ME.message]); end
+end

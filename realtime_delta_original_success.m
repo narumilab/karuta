@@ -153,50 +153,52 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
    
     
   
-    ringBuffer = [ringBuffer; audioRecorded]; 
+     
     
-    g = length(ringBuffer);
+    
     accumulated_frame_count = accumulated_frame_count + 1;
-
     
-    if length(ringBuffer) >= frameLen;
-        % --- MFCC処理 ---
-        frame = ringBuffer(1:frameLen);
-        a=length(ringBuffer);
-        c=length(frame);
-        [coeffs, delta, deltaDelta] = mfcc(frame, Fs);
-        mfcc_matrix_current = [coeffs, delta, deltaDelta];
-        %current_mfcc_c0 = mfcc_matrix_current(1, 1);
-        %current_power = sum(ringBuffer.^2) / length(ringBuffer);
-        %current_power = max(abs(ringBuffer(1:bufLen)));
-        current_power = rms(ringBuffer(1:bufLen));
-        full_current_power =[full_current_power current_power];
+
+    if started
+        ringBuffer = [ringBuffer; audioRecorded];
+        fullAudioBuffer = [fullAudioBuffer; audioRecorded];
+        frame_count = frame_count + 1;
+        start_recog =toc;
+            
+            
+        if length(ringBuffer) >= frameLen;
+            % --- MFCC処理 ---
+            g = length(ringBuffer);
+            frame = ringBuffer(1:frameLen);
+            a=length(ringBuffer);
+            c=length(frame);
+            [coeffs, delta, deltaDelta] = mfcc(frame, Fs);
+            mfcc_matrix_current = [coeffs, delta, deltaDelta];
+            %current_mfcc_c0 = mfcc_matrix_current(1, 1);
+            %current_power = sum(ringBuffer.^2) / length(ringBuffer);
+            %current_power = max(abs(ringBuffer(1:bufLen)));
+            current_power = rms(ringBuffer(1:bufLen));
+            full_current_power =[full_current_power current_power];
+            
+            %if ~started
+                % ⭐ 無音閾値チェック ⭐
+                %if current_mfcc_c0 > silenceThresh
+                %if current_power > silenceThresh
+                    
+                    %started = true;
+                    %start_recog =toc;
+                    %disp("Sound detected! Starting HMM recognition...");
+                    
+                %end 
+            %end
+            
         
-        %if ~started
-            % ⭐ 無音閾値チェック ⭐
-            %if current_mfcc_c0 > silenceThresh
-            %if current_power > silenceThresh
-                
-                %started = true;
-                %start_recog =toc;
-                %disp("Sound detected! Starting HMM recognition...");
-                
-            %end 
-        %end
-        
-       
 
         
         % ⭐⭐⭐ 修正 3: HMM認識の実行条件を started == true に変更 ⭐⭐⭐
-        if started
-            frame_count = frame_count + 1;
-            start_recog =toc;
-            if audio_started == false
-                fullAudioBuffer = [ringBuffer; audioRecorded]; 
-                audio_started = true; % 再生フラグを設定
-            else
-                fullAudioBuffer = [fullAudioBuffer; audioRecorded];
-            end
+        
+            
+            
             % ファイル保存のため累積
             %power = [power current_power];
             latest_index = size(mfcc_matrix_current, 1);
@@ -251,13 +253,13 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
                     lock_counter = 0; 
                 end
 
-                %if lock_counter >= 3 % consecutive_limit は 3 に設定
-                    %recog_locked = true;
+                if lock_counter >= 3 % consecutive_limit は 3 に設定
+                    recog_locked = true;
     % ここで初めて「確定」とみなし、出力を表示
                 
-                    %[~,recog_fuda] = max(posterior);
-                    %break
-                %end
+                    [~,recog_fuda] = max(posterior);
+                    break
+                end
                   
                    
                 % ⭐⭐⭐ 最新の事後確率を表示 ⭐⭐⭐
@@ -325,19 +327,20 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
             end
             
             % ⭐ 追加: ファイル保存後も、HMMの状態は before_ll と before_filt を介して次のループに引き継がれる
-        end
-        ringBuffer(1:shift) = []; % シフト量 (20ms) 分をのこす
-        b = length(ringBuffer);
-        if length(ringBuffer) > g-(Fs*0.01)
-            shift_fix = shift_fix + 1;
-            shift_change = shift-(g-b);
-            ringBuffer = ringBuffer(shift_change + 1 : end);
-            
-        end
-        if length(ringBuffer) < g-(Fs*0.01)
-            disp('欠落しました');
-            shift_error = shift_error + 1;
+        
+            ringBuffer(1:shift) = []; % シフト量 (20ms) 分をのこす
+            b = length(ringBuffer);
+            if length(ringBuffer) > g-(Fs*0.01)
+                shift_fix = shift_fix + 1;
+                shift_change = shift-(g-b);
+                ringBuffer = ringBuffer(shift_change + 1 : end);
+                
+            end
+            if length(ringBuffer) < g-(Fs*0.01)
+                disp('欠落しました');
+                shift_error = shift_error + 1;
 
+            end
         end
     end
 end

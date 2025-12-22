@@ -24,7 +24,7 @@ N = size(mean_vec_i_m, 2);      % 状態数 (N)
 ll = zeros(num_fuda, 1);       % 累積尤度 (K x 1)
 posterior = zeros(num_fuda,1);
 filt = zeros(N, num_fuda); 
-filt(1, :) = 1.0;
+filt(1:5, :) = 1/5;
 accumulated_frame_count = 0;          % 累積フレーム数
 accumulated_frame = 0; 
 % ⭐ 追加: MFCCフレームの累積インデックス (30msフレーム単位)
