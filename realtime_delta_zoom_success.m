@@ -14,7 +14,7 @@ l = 0.01; % バッファ取得時間 (10 ms)
 threshold = 0.9999;
 w = 0.1;
 % ⭐ ファイル保存設定 ⭐
-output_dir = './kimariji_outputs';     
+output_dir = './kimariji_outputs_zoom';     
 output_base_name = 'recog_kimariji'; 
 % === HMM状態の初期化 ===
 load(model_file, 'mean_vec_i_m', 'var_vec_i_m', 'a_i_j_m');
@@ -102,7 +102,7 @@ audio_started = false;
 %silenceThresh = 0.02; 
 
 input_gain = 2.0;       % 2.0倍に増幅（必要に応じて 5.0 や 10.0 に調整）
-silenceThresh = 0.05;   % 増幅後の音量に合わせた無音閾値（コード2の設定を参考）
+silenceThresh = 0.3;   % 増幅後の音量に合わせた無音閾値（コード2の設定を参考）
 
 power_over=0;
 power=[];
@@ -346,7 +346,7 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
         end
     end
 end
-release(deviceReader);
+release(aPR);
 disp('処理終了');
 
 
