@@ -20,7 +20,7 @@ N = size(mean_vec_i_m, 2);      % 状態数 (N)
 ll = zeros(num_fuda, 1);       % 累積尤度 (K x 1)
 posterior = zeros(num_fuda,1);
 filt = zeros(N, num_fuda); 
-filt(1, :) = 1.0;
+filt(1:N, :) = 1/N;
 accumulated_frame_count = 0;          % 累積フレーム数
 % ⭐ 札のインデックスを初期化 ⭐
 recog_time = inf;
@@ -56,7 +56,7 @@ tic
 
 % 例: './aihara_test/tsu/tsu1.wav' のように、フォルダ名とファイル名を含む完全なパスを指定してください。
 
-input_wav_path = './aihara_test/nageke/nageke2.wav'; 
+input_wav_path = './aihara_test/ooke/ooke4.wav'; 
 
 % ========================
 

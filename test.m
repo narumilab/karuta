@@ -13,7 +13,7 @@ for i=1:nfuda
     recog_fuda{i} = cell(1,nmfcc);
     posterior{i} = cell(1,nmfcc);
     for j=1:nmfcc
-        [recog_time{i}{j},recog_fuda{i}{j},posterior{i}{j}]=karuta_HMM_recog(mfccs_test{i}{j},'models_state30/iter10.mat',0.99,0.1);
+        [recog_time{i}{j},recog_fuda{i}{j},posterior{i}{j}]=karuta_HMM_recog(mfccs_test{i}{j},'models_state30/iter10.mat',0.9999,0.1);
         if recog_fuda{i}{j} == i
             recog_rate(i) = recog_rate(i)+1/nmfcc;
         end

@@ -59,11 +59,6 @@ frame_shift_sec = n - m;        % 10 ms
 shift    = round(frame_shift_sec * Fs); % 10 ms 
 bufLen   = round(l * Fs);       % 10 ms 
 
-% === 入力デバイス設定 ===
-deviceReader = audioDeviceReader('Device', 'ステレオ ミキサー (Realtek(R) Audio)', ...
-    'SampleRate', Fs, ...
-    'SamplesPerFrame', bufLen);
-disp('Listening... (waiting for non-silent input)')
 
 
 
@@ -119,11 +114,26 @@ overrun_log = {};
 
 lock_counter = 0;
 mfcc_count=0;
+aPR = audioPlayerRecorder('Device', 'ZOOM UAC-2 ASIO Driver', ...
+    'SampleRate', Fs, ...
+    'BufferSize', bufLen, ...
+    'RecorderChannelMapping', 1, ...
+    'PlayerChannelMapping', 1);
+
+aFE = audioFeatureExtractor( ...
+    SampleRate=Fs, ...
+    Window=hamming(round(0.03*Fs),"periodic"), ...
+    OverlapLength=round(0.02*Fs), ...
+    mfcc=true, ...
+    mfccDelta=true, ...
+    mfccDeltaDelta=true);
+
+out_buf = zeros(bufLen,1);
 
 tic
 while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
  
-    [audioRecorded, numOverrun] = deviceReader(); % 音声を取得 (10ms分)
+    [audioRecorded, numUnderrun, numOverrun] = aPR(out_buf);
     audioRecorded = audioRecorded * input_gain;
     if numOverrun > 0
 
