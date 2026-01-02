@@ -10,7 +10,7 @@ input_wav_path = './aihara_test/ooke/ooke2.wav';
 Fs = 44100;
 n = 0.03; % 窓長 (30 ms)
 m = 0.02; % オーバーラップ (20 ms)
-l = 0.01; % バッファ取得時間 (10 ms)
+l_buf = 0.01; % バッファ取得時間 (10 ms)
 threshold = 0.9999;
 w = 0.1;
 % ⭐ ファイル保存設定 ⭐
@@ -19,7 +19,7 @@ output_base_name = 'recog_kimariji';
 % === HMM状態の初期化 ===
 load(model_file, 'mean_vec_i_m', 'var_vec_i_m', 'a_i_j_m');
 num_fuda = size(mean_vec_i_m, 3); % 札数 (K)
-N = size(mean_vec_i_m, 2);      % 状態数 (N)
+N = size(mean_vec_i_m, 2) ;   % 状態数 (N)
 % ⭐ HMMの状態管理変数を初期化 ⭐
 ll = zeros(num_fuda, 1);       % 累積尤度 (K x 1)
 posterior = zeros(num_fuda,1);
@@ -57,7 +57,7 @@ frameLen = round(0.19* Fs);
 shift_check = round(m * Fs);
 frame_shift_sec = n - m;        % 10 ms 
 shift    = round(frame_shift_sec * Fs); % 10 ms 
-bufLen   = round(l * Fs);       % 10 ms 
+bufLen   = round(l_buf * Fs);       % 10 ms 
 
 % === 入力デバイス設定 ===
 deviceReader = audioDeviceReader('Device', 'ステレオ ミキサー (Realtek(R) Audio)', ...
@@ -183,6 +183,7 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
             c=length(frame);
             [coeffs, delta, deltaDelta] = mfcc(frame, Fs);
             mfcc_matrix_current = [coeffs, delta, deltaDelta];
+     
         
             % ファイル保存のため累積
             
@@ -239,15 +240,15 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
                   
                    
                 % ⭐⭐⭐ 最新の事後確率を表示 ⭐⭐⭐
-                disp('--- 最新の札別 潜在確率 (Posterior) ---');
-                if max(posterior) > 0.1
-                    stars = repmat('★', 1, lock_counter);
-                    max_p = max(posterior);
-                    [max_val, max_idx] = max(posterior);
-                    fprintf('  候補: 札%d (%.2f%%) %s\n', max_idx, max_p*100, stars);
-                end
+                %disp('--- 最新の札別 潜在確率 (Posterior) ---');
+                %if max(posterior) > 0.1
+                    %stars = repmat('★', 1, lock_counter);
+                    %max_p = max(posterior);
+                    %[max_val, max_idx] = max(posterior);
+                    %fprintf('  候補: 札%d (%.2f%%) %s\n', max_idx, max_p*100, stars);
+                %end
                 %for k = 1:num_fuda
-        %            fprintf('  札 %d: %.6f\n', k, posterior_result(k, end) * 100); 
+                    %fprintf('  札 %d: %.6f\n', k, posterior_result(k, end) * 100); 
                     %fprintf('  札 %d: %.6f\n', k, posterior(k) * 100); 
                 %end
             end

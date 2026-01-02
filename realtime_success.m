@@ -41,7 +41,7 @@ posterior = zeros(num_fuda,1);
 %filt(1, :) = 1.0;
 % 状態1だけに100%振るのではなく、最初の方の状態（例えば状態1〜5）に少し余裕を持たせる
 filt = zeros(N, num_fuda);
-filt(1:2, :) = 1/2; % 最初の5状態のどこから始まっても良いとする
+filt(1:N, :) = 1/N; % 最初の5状態のどこから始まっても良いとする
      
 recog_locked = false;                 
 lock_counter = 0; 
