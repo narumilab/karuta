@@ -7,7 +7,7 @@ addpath('Lee_HMM'); % 必要なパスを追加
 model_file = 'models_state30/iter10.mat';
 % 認識対象の単一の音声ファイルパス
 % 例: './aihara_test/tsu/tsu1.wav' のように、フォルダ名とファイル名を含む完全なパスを指定してください。
-input_wav_path = './aihara_test/ooke/ooke1.wav'; 
+input_wav_path = './aihara/nageke/nageke5.wav'; 
 % 決まり字区間の保存先ディレクトリとファイル名（元のスクリプトを踏襲）
 output_dir = './aihara_realtime_kimariji_single';
 output_base_name = 'kimariji_output'; % 保存ファイル名のベース

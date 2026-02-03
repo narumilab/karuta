@@ -1,3 +1,6 @@
+%mfcc比較用行列比較スクリプト
+% 2つの.matファイルに保存されたMFCC行列を比較し、 
+% 差の絶対値を計算してヒートマップで可視化する。
 % === 1. ユーザー設定 ===
 file1_name = 'mfcc比較\生データ\offline_delta_original_ooke1.mat'; % 比較対象の1つ目の.matファイル名
 file2_name = 'mfcc比較\生データ\offline_devide_delta_original_ooke1.mat'; % 比較対象の1つ目の.matファイル名 after

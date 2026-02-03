@@ -1,3 +1,5 @@
+ % save_recog_audio.m
+ 
  % --- 音声保存用補助関数 ---
     function save_recog_audio(buffer, Fs, idx, outDir)
         if ~exist(outDir, 'dir'), mkdir(outDir); end

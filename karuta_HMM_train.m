@@ -2,6 +2,9 @@
 %
 % num_state: number of hidden states
 % num_iter: number of EM iterations
+% train_mfcc: {{MFCC行列}} の形式で与える
+% 例: mfccs{i}{j} は i 番目の札の j 番目の学習用MFCC行列
+
 function []=karuta_HMM_train(train_mfcc,num_state,num_iter)
     nfuda = length(train_mfcc);
     N = num_state+2;

@@ -1,10 +1,17 @@
+% 決定版：karuta_HMM_recog_realtime.m（修正完了版）
+% リアルタイム音声入力に対してHMM認識を行い、決まり字確定時に音声をファイル保存するスクリプト
+% 追加機能: 
+% - オーバーラン検出とログ記録
+% - 決まり字確定シーケンスの最終出力
+% - 音声再生と認識の同期処理
+
 clear;
 % HMM関数 karuta_HMM_recog_realtime がパス上にあることを前提とします。
 addpath('Lee_HMM'); 
 % === ユーザー設定部分 ===
 model_file = 'models_state30/iter10.mat'; % HMM学習済みモデル 
 
-input_wav_path = './aihara_test/ooke/ooke2.wav'; 
+input_wav_path = './aihara/nageke/nageke50.wav'; 
 %[y, Fs] = audioread(input_wav_path);
 %Fs = 48000;
 Fs = 44100;
@@ -24,10 +31,13 @@ N = size(mean_vec_i_m, 2) ;   % 状態数 (N)
 ll = zeros(num_fuda, 1);       % 累積尤度 (K x 1)
 posterior = zeros(num_fuda,1);
 filt = zeros(N, num_fuda); 
-%filt(1, :) = 1.0;
-filt(1:N, :) = 1/N;
+filt(1, :) = 1.0;
+%filt(1:N, :) = 1/N;
 accumulated_frame_count = 0;% 累積フレーム数
-frame_count = 0;          
+%frame_count = 0;          
+mfcc_count=0;
+mfcc_start = false;
+mfcc_start_2 = false;
 accumulated_frame = 0; 
 % ⭐ 追加: MFCCフレームの累積インデックス (30msフレーム単位)
 mfcc_frame_index = 0; 
@@ -118,7 +128,7 @@ power=[];
 overrun_log = {};
 
 lock_counter = 0;
-mfcc_count=0;
+
 
 tic
 while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
@@ -149,7 +159,7 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
     if ~started
         if rmsVal > silenceThresh
             started = true;
-            disp("🎵 Sound detected! Analyzing with pre-roll buffer...");
+            disp("🎵 Sound detected!");
         else
             % started でない間は、フルバッファへの追加や解析はスキップ
             continue; 
@@ -165,7 +175,7 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
     if started
         accumulated_frame_count = accumulated_frame_count + 1;
         fullAudioBuffer = [fullAudioBuffer; audioRecorded];
-        frame_count = frame_count + 1;
+        %frame_count = frame_count + 1;
         start_recog = toc;
        
         if length(ringBuffer) > frameLen
@@ -183,8 +193,20 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
             c=length(frame);
             [coeffs, delta, deltaDelta] = mfcc(frame, Fs);
             mfcc_matrix_current = [coeffs, delta, deltaDelta];
-     
-        
+            
+            if mfcc_start 
+                if ~mfcc_start_2
+                    mfcc_second = mfcc_matrix_current;
+                end
+            end
+
+
+            if ~mfcc_start
+                mfcc_start = true;
+                mfcc_count = mfcc_count + size(mfcc_matrix_current,1)-1;
+                mfcc_first = mfcc_matrix_current;
+            end
+            
             % ファイル保存のため累積
             
             latest_index = size(mfcc_matrix_current, 1);
@@ -206,13 +228,14 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
     
             p=size(mfcc_data,2);
             for s=1:size(mfcc_data,2);
-                
+                mfcc_count=mfcc_count+1;
                 for k=1:num_fuda;
                    
                     l = 0;
                     pred = filt(:,k)'*a_i_j_m(:,:,k);
                     for i=2:N-1 
                         emission_prob = exp(logDiagGaussian(mfcc_data(:,s),mean_vec_i_m(:,i,k),var_vec_i_m(:,i,k)));
+                        %emission_prob = exp(logDiagGaussian(mfcc_data(1:14,s),mean_vec_i_m(1:14,i,k),var_vec_i_m(1:14,i,k)));
                         l = l + pred(i) * emission_prob;
                         filt(i,k) = pred(i) * emission_prob;
                     end
@@ -232,6 +255,7 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
                 if lock_counter >= 3 % consecutive_limit は 3 に設定
                     recog_locked = true;
                     total_sec = toc - start_recog; 
+                    
     % ここで初めて「確定」とみなし、出力を表示
                 
                     [~,recog_fuda] = max(posterior);
@@ -266,11 +290,11 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
             if recog_fuda ~= fuda 
                 
                 %total_sec = end_recog - start_recog; 
-                fprintf("決まり字が確定しました！ %.3f sec. Total frames: %d\n", total_sec, frame_count);
+                %fprintf("決まり字が確定しました！ %.3f sec. Total frames: %d\n", total_sec, mfcc_count);
                 fuda = recog_fuda;
                 % ⭐ 追加 4: 確定した札のインデックスを記録 ⭐
                 recog_sequence_log = [recog_sequence_log, recog_fuda];
-                disp('*** 決まり字が確定しました！確定区間の音声をファイル保存します (状態は継続) ***');
+                %disp('*** 決まり字が確定しました！確定区間の音声をファイル保存します (状態は継続) ***');
                 % --- 修正箇所：if recog_fuda ~= fuda のブロック内 ---
 
     
@@ -279,20 +303,22 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
 
 
                 % ⭐ 修正 4: 確定フレーム数は累積カウントを使用 ⭐
-                total_recog_frame = frame_count;
+                %total_recog_frame = frame_count;
+                total_recog = mfcc_count;
                 
                 % 確定時点までの秒数を計算 (frame_shift_sec は 10ms)
-                kimariji_second = 0.01 * (total_recog_frame - 1) + 0.03; 
+                %kimariji_second = 0.01 * (total_recog_frame - 1) + 0.03; 
+                kimariji_second2 = 0.01 * (total_recog - 1) + 0.03 ;
 
                 % ⭐ 追加：時刻と札番号をペアで記録
-                recog_timestamp_log = [recog_timestamp_log; recog_fuda, kimariji_second];
+                recog_timestamp_log = [recog_timestamp_log; recog_fuda, kimariji_second2];
                 
                 % 全体の音声バッファから、その秒数に対応するサンプル数を切り出す
-                kimariji_samples = ceil(kimariji_second * Fs);
+                kimariji_samples = ceil(kimariji_second2 * Fs);
                 
                 if kimariji_samples > length(fullAudioBuffer)
                     kimariji_samples = length(fullAudioBuffer);
-                    disp('警告: 計算されたサンプル数が現在のバッファ長を超過したため、バッファ全体を保存します。');
+                    %disp('警告: 計算されたサンプル数が現在のバッファ長を超過したため、バッファ全体を保存します。');
                 end
                 
                 audioToSave = fullAudioBuffer(1:kimariji_samples); 
@@ -307,12 +333,12 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
                     
                     audiowrite(output_filename, audioToSave, Fs); 
                     
-                    disp(['ファイル保存が完了しました。保存先: ', output_filename]);
-                    disp(['保存音声長: ', num2str(kimariji_second), ' 秒']);
+                    % disp(['ファイル保存が完了しました。保存先: ', output_filename]);
+                    % disp(['保存音声長: ', num2str(kimariji_second2), ' 秒']);
                     
                 catch ME_save
-                    disp('ファイル保存エラーが発生しました。');
-                    disp(['エラーメッセージ: ' ME_save.message]);
+                     disp('ファイル保存エラーが発生しました。');
+                     disp(['エラーメッセージ: ' ME_save.message]);
                 end
                 
                 % *** HMM状態リセット処理はここには追加しません ***
@@ -338,14 +364,14 @@ while toc < 5 % 時間を30秒間に延長 (認識が継続するため)
     end
 end
 release(deviceReader);
-disp('処理終了');
+%disp('処理終了');
 
 
 % ========================================
 % ⭐ 追加 5: 決まり字シーケンスの最終出力 ⭐
 % ========================================
 disp('---');
-disp('📜 **決まり字 最終認識シーケンス** 📜');
+%disp('📜 **決まり字 最終認識シーケンス** 📜');
 if isempty(recog_sequence_log)
     disp('認識された札はありませんでした。');
 else
@@ -398,21 +424,21 @@ else
 end
 
 
-%try
-    % 音声データのサンプリング周波数とデータ長を取得
-    %TotalSamples = length(fullAudioBuffer);
-    %TimeDuration = TotalSamples / Fs;
+try
+    %音声データのサンプリング周波数とデータ長を取得
+    TotalSamples = length(fullAudioBuffer);
+    TimeDuration = TotalSamples / Fs;
     
-    % 時間ベクトルを作成
-    %time_vector = (0:TotalSamples-1) / Fs;
+    %時間ベクトルを作成
+    time_vector = (0:TotalSamples-1) / Fs;
     
-    %figure;
-    %plot(time_vector, fullAudioBuffer);
-    %title('全入力音声波形');
-    %xlabel('時間 (秒)');
-    %ylabel('振幅');
-    %grid on;
-    %disp(['プロットが完了しました。音声総時間: ', num2str(TimeDuration, '%.3f'), ' 秒']);
-%catch ME_plot
-    %disp(['波形プロット中にエラーが発生しました: ', ME_plot.message]);
-%end
+    figure;
+    plot(time_vector, fullAudioBuffer);
+    title('全入力音声波形');
+    xlabel('時間 (秒)');
+    ylabel('振幅');
+    grid on;
+    disp(['プロットが完了しました。音声総時間: ', num2str(TimeDuration, '%.3f'), ' 秒']);
+catch ME_plot
+    disp(['波形プロット中にエラーが発生しました: ', ME_plot.message]);
+end

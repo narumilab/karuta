@@ -1,4 +1,9 @@
 % example: karuta_HMM_recog(mfccs{i}{j},'models_state30/iter10.mat',0.99,0.1)
+% mfcc: MFCC特徴量行列 (D x T)
+% model: 学習済みHMMモデルのファイルパス
+% threshold: スコア閾値
+% w: 時間閾値
+
 function [recog_time,recog_fuda,posterior]=karuta_HMM_recog(mfcc,model,threshold,w)
     mfcc = mfcc';
     load(model, 'mean_vec_i_m', 'var_vec_i_m', 'a_i_j_m');

@@ -1,4 +1,8 @@
 % example: [mfccs,fudas]=wav_to_mfcc('./aihara_wav')
+% 指定ディレクトリ内のサブフォルダごとにWAVファイルを読み込み、MFCC特徴量を抽出する関数
+% 戻り値:
+% mfccs: {{MFCC行列}} の形式で返す
+
 function [mfccs,fudas]=wav_to_mfcc(wav_dir)
     entries = dir(wav_dir);
     isSubfolder = [entries.isdir] & ~ismember({entries.name}, {'.', '..'});

@@ -1,3 +1,7 @@
+% example: kimariji_check
+% 複数の音声ファイルに対して決まり字抽出を
+% 実行し、結果を音声再生で確認するスクリプト
+
 for i=1:9
     for j=1:5
         if recog_fuda{i}{j} == i

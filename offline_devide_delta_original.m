@@ -1,3 +1,10 @@
+% 決定版：karuta_HMM_recog_realtime.m（修正完了版）
+% リアルタイム音声入力に対してHMM認識を行い、決まり字確定時に音声をファイル保存するスクリプト
+% 追加機能:
+% - オーバーラン検出とログ記録
+% - 決まり字確定シーケンスの最終出力
+% - 音声再生と認識の同期処理
+
 clear;
 % HMM関数 karuta_HMM_recog_realtime がパス上にあることを前提とします。
 addpath('Lee_HMM'); 
@@ -56,7 +63,7 @@ tic
 
 % 例: './aihara_test/tsu/tsu1.wav' のように、フォルダ名とファイル名を含む完全なパスを指定してください。
 
-input_wav_path = './aihara_test/ooke/ooke4.wav'; 
+input_wav_path = './aihara/nageke/nageke50.wav'; 
 
 % ========================
 

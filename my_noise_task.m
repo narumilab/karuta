@@ -1,3 +1,6 @@
+% my_noise_task.m
+% 複数の音声ファイルに対してノイズを加えた音声を生成し保存するスクリプト
+
 % --- 設定 ---
 base_input_dir = './aihara_test';
 base_output_dir = './aihara_noise';
